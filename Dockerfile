@@ -4,16 +4,30 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Copy requirements
-COPY src/requirements.txt ./requirements.txt
+# Install system dependencies needed for PostgreSQL and other packages
+RUN apt-get update && apt-get install -y \
+    gcc \
+    bash \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements
+COPY requirements.txt ./requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir gunicorn asyncpg
 
 # Copy source code
 COPY . .
 
+# Make startup script executable
+RUN chmod +x startup.sh
+
+# Expose port
 EXPOSE 3090
 
-# Default command (can be overridden by docker-compose)
-CMD ["python", "main.py"]
+# Health check
+
+# Run startup script
+CMD ["bash", "startup.sh"]
