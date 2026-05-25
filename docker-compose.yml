@@ -36,8 +36,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - swappro_network
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
