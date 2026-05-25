@@ -6,6 +6,7 @@ import os
 class Settings(BaseSettings):
     SERVICE_NAME: str = "Swappro Backend"
     DEBUG: bool = True
+    APP_PORT: int = int(os.environ.get("APP_PORT", "3090"))
 
     DB_DRIVER: str = "postgresql+asyncpg"
     DB_HOST: str = os.environ.get('PGHOST')

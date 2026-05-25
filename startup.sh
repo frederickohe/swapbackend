@@ -67,5 +67,6 @@ echo "Applying Alembic migrations (upgrade head)"
 python -m alembic upgrade head
 
 # Run the application: use multiple workers for production
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
+APP_PORT="${APP_PORT:-3090}"
+gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b "0.0.0.0:${APP_PORT}" main:app
 

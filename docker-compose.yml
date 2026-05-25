@@ -25,7 +25,7 @@ services:
 
   backend:
     build: .
-    command: python src/main.py
+    command: python main.py
     volumes:
       - .:/app
     environment:
@@ -42,12 +42,13 @@ services:
       DB_PASSWORD: changeme321
       DB_DATABASE: ent_core_db
       MULTI_TENANT: false
+      APP_PORT: 3090
     restart: always
     depends_on:
       - db
       - redis
     ports:
-      - "8000:8000"
+      - "3090:3090"
 
 volumes:
   redis_data:
