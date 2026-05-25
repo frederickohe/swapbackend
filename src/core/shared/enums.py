@@ -1,0 +1,53 @@
+from enum import Enum
+
+
+class UserRole(str, Enum):
+    USER = "USER"
+    ADMIN = "ADMIN"
+    OFFICIAL = "OFFICIAL"
+
+
+class ListingStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    DELETED = "DELETED"
+
+
+class SwapRequestStatus(str, Enum):
+    PENDING_INITIATOR_FEE = "PENDING_INITIATOR_FEE"
+    PENDING_OWNER_APPROVAL = "PENDING_OWNER_APPROVAL"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+    PENDING_OWNER_FEE = "PENDING_OWNER_FEE"
+    PENDING_HUB_MEETING = "PENDING_HUB_MEETING"
+    CANCELLED = "CANCELLED"
+
+
+class SwapStatus(str, Enum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    DISPUTE = "DISPUTE"
+    NO_SHOW_INITIATOR = "NO_SHOW_INITIATOR"
+    NO_SHOW_OWNER = "NO_SHOW_OWNER"
+    BOTH_NO_SHOW = "BOTH_NO_SHOW"
+
+
+class TransactionType(str, Enum):
+    FEE = "FEE"
+    DIFFERENCE = "DIFFERENCE"
+    REFUND = "REFUND"
+    FORFEIT = "FORFEIT"
+
+
+class TransactionStatus(str, Enum):
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    REFUNDED = "REFUNDED"
+
+
+class CreditReason(str, Enum):
+    EARNED_DIFFERENCE = "EARNED_DIFFERENCE"
+    SPENT_DIFFERENCE = "SPENT_DIFFERENCE"
+    FORFEIT_COMPENSATION = "FORFEIT_COMPENSATION"
+    ADMIN_OVERRIDE = "ADMIN_OVERRIDE"

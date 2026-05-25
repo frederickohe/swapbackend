@@ -1,0 +1,272 @@
+import os
+import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from enum import Enum
+from typing import Optional, Union
+import boto3
+from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
+
+
+class StorageFolder(str, Enum):
+    profile_images = "profile-images"
+    chatbot_files = "chatbot-files"
+    records_files = "records-files"
+    generated_images = "generated-images"
+    generated_videos = "generated-videos"
+
+
+class StorageService:
+    """Contabo S3-compatible storage implementation used by the app.
+
+    It reads configuration from environment variables:
+      - CONTABO_ACCESS_KEY
+      - CONTABO_SECRET_KEY
+      - CONTABO_ENDPOINT
+      - CONTABO_BUCKET
+
+    Methods:
+      - upload_file(file_obj, file_name, content_type=None) -> str (blob url)
+      - download_file(file_name, destination_path) -> str
+    """
+
+    def __init__(self):
+        self.access_key = os.getenv("CONTABO_ACCESS_KEY")
+        self.secret_key = os.getenv("CONTABO_SECRET_KEY")
+        self.endpoint = os.getenv("CONTABO_ENDPOINT", "https://usc1.contabostorage.com")
+        self.bucket = os.getenv("CONTABO_BUCKET")
+
+        if not self.access_key or not self.secret_key or not self.bucket:
+            raise ValueError(
+                "Contabo storage credentials and bucket must be set: "
+                "CONTABO_ACCESS_KEY, CONTABO_SECRET_KEY, and CONTABO_BUCKET"
+            )
+
+        # Initialize S3 client with Contabo endpoint
+        self.s3_client = boto3.client(
+            "s3",
+            endpoint_url=self.endpoint,
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            region_name="us-east-1"  # Required but not used by Contabo
+        )
+
+        # Ensure bucket exists (create if not). If it already exists, ignore the error.
+        try:
+            self.s3_client.head_bucket(Bucket=self.bucket)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                try:
+                    self.s3_client.create_bucket(Bucket=self.bucket)
+                except ClientError:
+                    pass  # Bucket creation not permitted; continue.
+            else:
+                pass  # Other errors; continue.
+
+    @staticmethod
+    def resolve_subfolder(
+        folder: Optional[Union["StorageFolder", str]] = None,
+        subfolder: str = "operations/",
+    ) -> str:
+        """Resolve a logical folder to an S3 prefix (subfolder)."""
+        if folder is None:
+            resolved = subfolder
+        else:
+            try:
+                folder_enum = folder if isinstance(folder, StorageFolder) else StorageFolder(str(folder))
+            except Exception as e:
+                raise ValueError(
+                    f"Invalid storage folder '{folder}'. Allowed: {[f.value for f in StorageFolder]}"
+                ) from e
+
+            # Keep legacy `operations/` prefix for consistency across the app.
+            resolved = f"operations/{folder_enum.value}/"
+
+        if not resolved.endswith("/"):
+            resolved += "/"
+        return resolved
+
+    def upload_file(
+        self,
+        file_obj,
+        file_name: str,
+        content_type: str | None = None,
+        timeout_seconds: int = 30,
+        subfolder: str = "operations/",
+        folder: Optional[Union["StorageFolder", str]] = None,
+    ) -> str:
+        """Upload a file-like object to Contabo S3 storage and return the object URL.
+
+        file_obj must be a readable file-like object (e.g. UploadFile.file from FastAPI).
+
+        Args:
+            file_obj: File-like object to upload
+            file_name: Name/path for the object
+            content_type: MIME type for the object
+            timeout_seconds: Maximum seconds to wait for upload (default: 30)
+            subfolder: S3 subfolder path (default: "operations/")
+            folder: Logical folder name (preferred). If provided, overrides subfolder.
+
+        Returns:
+            str: URL of the uploaded object
+
+        Raises:
+            TimeoutError: If upload takes longer than timeout_seconds
+            Exception: Other S3 storage exceptions
+        """
+        subfolder = self.resolve_subfolder(folder=folder, subfolder=subfolder)
+        
+        # Construct full S3 key with subfolder
+        s3_key = f"{subfolder}{file_name}"
+        
+        # Make sure we start reading from beginning
+        try:
+            file_obj.seek(0)
+        except Exception:
+            pass
+
+        # Define upload function to run in thread
+        def _upload():
+            try:
+                extra_args = {}
+                if content_type:
+                    extra_args["ContentType"] = content_type
+                
+                self.s3_client.upload_fileobj(
+                    file_obj,
+                    self.bucket,
+                    s3_key,
+                    ExtraArgs=extra_args if extra_args else None
+                )
+                
+                # Generate public URL for the uploaded object using pre-signed URL
+                # This ensures the URL is in the correct Contabo format and publicly accessible
+                url = self.s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': self.bucket, 'Key': s3_key},
+                    ExpiresIn=31536000  # 1 year expiration
+                )
+                return url
+            except Exception as e:
+                logger.error(f"Contabo S3 upload error: {str(e)}")
+                raise
+
+        # Execute upload with hard timeout using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_upload)
+            try:
+                # Wait for result with timeout
+                result = future.result(timeout=timeout_seconds)
+                logger.info(f"Successfully uploaded {file_name} to {subfolder} in Contabo S3 storage")
+                return result
+            except FuturesTimeoutError:
+                logger.error(f"Upload timeout after {timeout_seconds}s for {file_name}")
+                # Cancel the future (though the upload might still continue in background)
+                future.cancel()
+                raise TimeoutError(f"Contabo S3 upload timed out after {timeout_seconds} seconds")
+            except Exception as e:
+                logger.error(f"Upload failed for {file_name}: {str(e)}")
+                raise
+
+    def download_file(
+        self,
+        file_name: str,
+        destination_path: str,
+        subfolder: str = "operations/",
+        folder: Optional[Union["StorageFolder", str]] = None,
+    ) -> str:
+        """Download file from Contabo S3 to local file path.
+
+        Args:
+            file_name: Name/path of the object in S3
+            destination_path: Local path to save the file
+            subfolder: S3 subfolder path (default: "operations/")
+            folder: Logical folder name (preferred). If provided, overrides subfolder.
+
+        Returns:
+            str: Confirmation message
+
+        Raises:
+            Exception: S3 storage exceptions if file not found
+        """
+        subfolder = self.resolve_subfolder(folder=folder, subfolder=subfolder)
+        
+        # Construct full S3 key with subfolder
+        s3_key = f"{subfolder}{file_name}"
+        
+        try:
+            self.s3_client.download_file(
+                self.bucket,
+                s3_key,
+                destination_path
+            )
+            logger.info(f"Successfully downloaded {file_name} from {subfolder} in Contabo S3 to {destination_path}")
+            return f"Downloaded {file_name} to {destination_path}"
+        except ClientError as e:
+            logger.error(f"Contabo S3 download error for {file_name}: {str(e)}")
+            raise
+
+    def list_files(
+        self,
+        folder: Optional[Union["StorageFolder", str]] = None,
+        subfolder: str = "operations/",
+        prefix: str = "",
+        max_keys: int = 1000,
+    ) -> list[dict]:
+        """List objects under a given folder + prefix.
+
+        Returns a list of dicts: { "key": str, "url": str }.
+        """
+        subfolder = self.resolve_subfolder(folder=folder, subfolder=subfolder)
+        full_prefix = f"{subfolder}{prefix}"
+
+        results: list[dict] = []
+        continuation_token: str | None = None
+
+        while True:
+            params = {
+                "Bucket": self.bucket,
+                "Prefix": full_prefix,
+                "MaxKeys": max_keys,
+            }
+            if continuation_token:
+                params["ContinuationToken"] = continuation_token
+
+            resp = self.s3_client.list_objects_v2(**params)
+            for obj in resp.get("Contents", []) or []:
+                key = obj.get("Key")
+                if not key or key.endswith("/"):
+                    continue
+
+                url = self.s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": key},
+                    ExpiresIn=31536000,
+                )
+                results.append({"key": key, "url": url})
+
+            if resp.get("IsTruncated"):
+                continuation_token = resp.get("NextContinuationToken")
+                if not continuation_token:
+                    break
+            else:
+                break
+
+        return results
+
+    def delete_file(
+        self,
+        file_name: str,
+        folder: Optional[Union["StorageFolder", str]] = None,
+        subfolder: str = "operations/",
+    ) -> None:
+        """Delete an object from Contabo S3."""
+        subfolder = self.resolve_subfolder(folder=folder, subfolder=subfolder)
+        s3_key = f"{subfolder}{file_name}"
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket, Key=s3_key)
+            logger.info(f"Successfully deleted {s3_key} from Contabo S3")
+        except ClientError as e:
+            logger.error(f"Contabo S3 delete error for {s3_key}: {str(e)}")
+            raise
