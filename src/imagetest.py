@@ -63,7 +63,7 @@ def test_receipt_generator():
             "data": {
                 'amount': "1000.00",
                 'transaction_id': "LN0987654321",
-                'sender_name': "ymca Finance",
+                'sender_name': "swappro Finance",
                 'sender_account': "LBFIN001",
                 'sender_provider': "Internal",
                 'receiver_name': "Sarah Owusu",
@@ -82,7 +82,7 @@ def test_receipt_generator():
             "data": {
                 'amount': "5000.00",
                 'transaction_id': "LN5000BIG",
-                'sender_name': "ymca Finance",
+                'sender_name': "swappro Finance",
                 'sender_account': "LBFIN001",
                 'sender_provider': "Internal",
                 'receiver_name': "Michael Asante",
