@@ -73,6 +73,7 @@ class AuthService:
             phone=request.phone,
             email=request.email,
             hashed_password=self.hash_password(request.password),
+            enabled=True,
             profile_picture_url=request.profile_picture_url,
             
             nationality=request.nationality,

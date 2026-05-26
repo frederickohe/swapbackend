@@ -44,8 +44,11 @@ def get_current_user(
         user = db.query(User).filter(User.id == subject).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.status == "DELETED" or not user.enabled:
-        raise HTTPException(status_code=403, detail="Account is disabled")
+    if user.status in ("DELETED", "INACTIVE"):
+        raise HTTPException(
+            status_code=403,
+            detail="Account is disabled" if user.status == "INACTIVE" else "Account is deleted",
+        )
     if user.strikes >= 3 and user.role == UserRole.USER:
         raise HTTPException(status_code=403, detail="Account restricted due to no-shows")
     return user

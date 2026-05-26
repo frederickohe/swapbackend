@@ -95,7 +95,7 @@ class User(Base):
         server_default='{}'  # For database-level default
     )
 
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     status: Mapped[UserStatus] = mapped_column(String, nullable=False, default=UserStatus.ACTIVE)
