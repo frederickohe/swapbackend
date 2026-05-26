@@ -10,6 +10,7 @@ import ssl
 from email.message import EmailMessage
 from sqlalchemy.orm import Session
 from core.otp.model.otp import OTP
+from utilities.phone import normalize_phone
 from core.otp.dto.response.otp_send_response import OTPSendResponse
 from core.wirepick.service.wirepickservice import WirepickSMSService, WirepickSMSException
 from config import settings
@@ -33,6 +34,9 @@ class OTPService:
 
     def send_otp_phone(self, phone: str) -> OTPSendResponse:
         """Send OTP to phone number using Wirepick SMS"""
+        phone = normalize_phone(phone)
+        if not phone:
+            return OTPSendResponse(success=False, message="Phone number is required")
         try:
             otp_code = self.generate_otp()
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.OTP_EXPIRE_SECONDS)
@@ -185,10 +189,14 @@ class OTPService:
         try:
             if not otp:
                 return False
-            
+
+            otp = str(otp).strip()
+            if phone:
+                phone = normalize_phone(phone)
+
             # Build query based on what's provided
             query = self.db.query(OTP).filter(OTP.otp == otp)
-            
+
             if phone:
                 query = query.filter(OTP.phone == phone)
             elif email:

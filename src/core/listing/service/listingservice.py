@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from config import settings
 from core.listing.model.listing import Listing
@@ -54,7 +54,12 @@ class ListingService:
         return listing
 
     def get_listing(self, listing_id: str) -> Listing:
-        listing = self.db.query(Listing).filter(Listing.id == listing_id).first()
+        listing = (
+            self.db.query(Listing)
+            .options(joinedload(Listing.user))
+            .filter(Listing.id == listing_id)
+            .first()
+        )
         if not listing:
             raise HTTPException(status_code=404, detail="Listing not found")
         self._refresh_expired(listing)
@@ -99,7 +104,11 @@ class ListingService:
         return listing
 
     def get_user_listings(self, user_id: str, status: Optional[str] = None) -> List[Listing]:
-        query = self.db.query(Listing).filter(Listing.user_id == user_id)
+        query = (
+            self.db.query(Listing)
+            .options(joinedload(Listing.user))
+            .filter(Listing.user_id == user_id)
+        )
         if status:
             query = query.filter(Listing.status == status)
         else:
@@ -131,7 +140,11 @@ class ListingService:
         page: int = 1,
         size: int = 20,
     ) -> dict:
-        query = self.db.query(Listing).filter(Listing.status == ListingStatus.ACTIVE.value)
+        query = (
+            self.db.query(Listing)
+            .options(joinedload(Listing.user))
+            .filter(Listing.status == ListingStatus.ACTIVE.value)
+        )
         if keyword:
             pattern = f"%{keyword}%"
             query = query.filter(

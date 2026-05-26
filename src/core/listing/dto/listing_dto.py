@@ -103,6 +103,8 @@ class ListingCategoriesResponse(BaseModel):
 class ListingResponse(BaseModel):
     id: str
     user_id: str
+    owner_fullname: Optional[str] = None
+    owner_profile_picture_url: Optional[str] = None
     title: str
     description: str
     category: str
@@ -127,9 +129,16 @@ class ListingResponse(BaseModel):
 
     @classmethod
     def from_listing(cls, listing, wishlist_match: Optional[bool] = None):
+        owner = getattr(listing, "user", None)
+        owner_fullname = owner.fullname if owner is not None else None
+        owner_profile_picture_url = (
+            owner.profile_picture_url if owner is not None else None
+        )
         return cls(
             id=listing.id,
             user_id=listing.user_id,
+            owner_fullname=owner_fullname,
+            owner_profile_picture_url=owner_profile_picture_url,
             title=listing.title,
             description=listing.description,
             category=listing.category,

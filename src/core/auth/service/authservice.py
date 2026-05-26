@@ -16,6 +16,7 @@ from core.notification.model.Notification import (
     NotificationType,
 )
 from core.otp.service.otpservice import OTPService
+from utilities.phone import normalize_phone
 import secrets
 import string
 import logging
@@ -67,10 +68,12 @@ class AuthService:
             
         user_id = self.generate_user_id()
 
+        normalized_phone = normalize_phone(request.phone) if request.phone else None
+
         db_user = User(
             id=user_id,
             fullname=request.fullname,
-            phone=request.phone,
+            phone=normalized_phone or request.phone,
             email=request.email,
             hashed_password=self.hash_password(request.password),
             enabled=True,
@@ -130,8 +133,8 @@ class AuthService:
         otp_send_result = None
         try:
             # Prefer phone OTP for account enablement (current `/verify-otp` contract uses phone).
-            if getattr(request, "phone", None):
-                otp_send_result = self.otp_service.send_otp_phone(request.phone)
+            if normalized_phone:
+                otp_send_result = self.otp_service.send_otp_phone(normalized_phone)
             elif getattr(request, "email", None):
                 otp_send_result = self.otp_service.send_otp_email(request.email)
         except Exception as e:
@@ -152,19 +155,35 @@ class AuthService:
             "otp_send_error": None if otp_sent else getattr(otp_send_result, "message", None),
         }
     
+    def _find_user_by_phone(self, phone: str) -> User | None:
+        normalized = normalize_phone(phone)
+        candidates = {phone.strip(), normalized}
+        if normalized.startswith("+"):
+            candidates.add(normalized[1:])
+        return (
+            self.db.query(User)
+            .filter(User.phone.in_(list(candidates)))
+            .first()
+        )
+
     def verify_and_enable_user(self, phone: str, otp: str):
         """Verify OTP and enable user account"""
-        # Validate OTP
-        is_valid = self.otp_service.validate_otp(phone=phone, otp=otp)
-        
+        normalized_phone = normalize_phone(phone)
+        if not normalized_phone:
+            return {"success": False, "message": "Phone number is required"}
+
+        # Validate OTP (try canonical phone, then raw input)
+        is_valid = self.otp_service.validate_otp(phone=normalized_phone, otp=otp)
+        if not is_valid and phone.strip() != normalized_phone:
+            is_valid = self.otp_service.validate_otp(phone=phone.strip(), otp=otp)
+
         if not is_valid:
             return {
                 "success": False,
                 "message": "Invalid or expired OTP"
             }
-        
-        # Find user by phone
-        user = self.db.query(User).filter(User.phone == phone).first()
+
+        user = self._find_user_by_phone(phone)
         
         if not user:
             return {
