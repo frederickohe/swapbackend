@@ -138,7 +138,8 @@ class ListingService:
                 or_(Listing.title.ilike(pattern), Listing.description.ilike(pattern))
             )
         if category:
-            query = query.filter(Listing.category.ilike(category))
+            # Exact match — categories are a fixed set validated at create/search.
+            query = query.filter(Listing.category == category)
         if min_value is not None:
             query = query.filter(Listing.estimated_value >= min_value)
         if max_value is not None:

@@ -1,18 +1,49 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.listing.dto.listing_dto import (
+    ListingCategoriesResponse,
     ListingCreateRequest,
     ListingResponse,
-    ListingSearchRequest,
     ListingUpdateRequest,
+)
+from core.listing.listing_categories import (
+    LISTING_INCOMING_CATEGORY_ROWS,
+    LISTING_ITEM_CATEGORY_ROWS,
+    LISTING_INCOMING_CATEGORIES,
+    LISTING_ITEM_CATEGORIES,
+    format_allowed_item_categories,
+    is_valid_item_category,
 )
 from core.listing.service.listingservice import ListingService
 from core.user.model.User import User
 from utilities.deps import get_current_user, get_db
 
 listing_routes = APIRouter()
+
+
+def _categories_response() -> ListingCategoriesResponse:
+    return ListingCategoriesResponse(
+        item_categories=list(LISTING_ITEM_CATEGORIES),
+        item_category_rows=[list(row) for row in LISTING_ITEM_CATEGORY_ROWS],
+        incoming_categories=list(LISTING_INCOMING_CATEGORIES),
+        incoming_category_rows=[list(row) for row in LISTING_INCOMING_CATEGORY_ROWS],
+    )
+
+
+def _normalize_search_category(category: Optional[str]) -> Optional[str]:
+    if category is None:
+        return None
+    trimmed = category.strip()
+    if not trimmed:
+        return None
+    if not is_valid_item_category(trimmed):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category filter. Allowed: {format_allowed_item_categories()}",
+        )
+    return trimmed
 
 
 @listing_routes.post("", response_model=ListingResponse)
@@ -26,6 +57,12 @@ def create_listing(
     data["wishlist"] = [w.dict() for w in request.wishlist]
     listing = service.create_listing(user.id, data)
     return ListingResponse.from_listing(listing)
+
+
+@listing_routes.get("/categories", response_model=ListingCategoriesResponse)
+def list_categories():
+    """Item and incoming (wishlist) categories — matches swap-pro add-belonging pickers."""
+    return _categories_response()
 
 
 @listing_routes.get("/mine", response_model=List[ListingResponse])
@@ -55,7 +92,7 @@ def search_listings(
     service = ListingService(db)
     result = service.search_listings(
         keyword=keyword,
-        category=category,
+        category=_normalize_search_category(category),
         min_value=min_value,
         max_value=max_value,
         lat=lat,

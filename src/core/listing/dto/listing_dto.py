@@ -3,10 +3,44 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, validator
 
+from core.listing.listing_categories import (
+    format_allowed_incoming_categories,
+    format_allowed_item_categories,
+    is_valid_incoming_category,
+    is_valid_item_category,
+)
+
+
+def _validate_item_category(v: str) -> str:
+    trimmed = v.strip()
+    if not is_valid_item_category(trimmed):
+        raise ValueError(
+            f"Invalid category. Allowed item categories: {format_allowed_item_categories()}"
+        )
+    return trimmed
+
+
+def _validate_incoming_category(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return None
+    trimmed = v.strip()
+    if not trimmed:
+        return None
+    if not is_valid_incoming_category(trimmed):
+        raise ValueError(
+            f"Invalid wishlist category. Allowed incoming categories: "
+            f"{format_allowed_incoming_categories()}"
+        )
+    return trimmed
+
 
 class WishlistItem(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
+
+    @validator("category")
+    def validate_category(cls, v):
+        return _validate_incoming_category(v)
 
 
 class ListingCreateRequest(BaseModel):
@@ -23,6 +57,10 @@ class ListingCreateRequest(BaseModel):
     wishlist: List[WishlistItem] = []
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+
+    @validator("category")
+    def validate_category(cls, v):
+        return _validate_item_category(v)
 
     @validator("image_urls")
     def max_images(cls, v):
@@ -45,6 +83,21 @@ class ListingUpdateRequest(BaseModel):
     wishlist: Optional[List[WishlistItem]] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+
+    @validator("category")
+    def validate_category(cls, v):
+        if v is None:
+            return None
+        return _validate_item_category(v)
+
+
+class ListingCategoriesResponse(BaseModel):
+    """Categories exposed for listing create/search and wishlist pickers."""
+
+    item_categories: List[str]
+    item_category_rows: List[List[str]]
+    incoming_categories: List[str]
+    incoming_category_rows: List[List[str]]
 
 
 class ListingResponse(BaseModel):
@@ -101,6 +154,12 @@ class ListingResponse(BaseModel):
 class ListingSearchRequest(BaseModel):
     keyword: Optional[str] = None
     category: Optional[str] = None
+
+    @validator("category")
+    def validate_category(cls, v):
+        if v is None:
+            return None
+        return _validate_item_category(v)
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     lat: Optional[float] = None
