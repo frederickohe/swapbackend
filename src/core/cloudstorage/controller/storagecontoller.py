@@ -74,7 +74,7 @@ async def upload_file(
 @storage_routes.post("/me/upload-rag-document", response_model=FileUploadRagResponse)
 async def upload_rag_document_for_subscribed_user(
     file: UploadFile = File(...),
-    folder: StorageFolder = Query(default=StorageFolder.chatbot_files),
+    folder: StorageFolder = Query(default=StorageFolder.listings),
     authjwt: AuthJWT = Depends(validate_token),
     db: Session = Depends(get_db),
 ):

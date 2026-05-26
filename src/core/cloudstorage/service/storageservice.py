@@ -11,10 +11,7 @@ logger = logging.getLogger(__name__)
 
 class StorageFolder(str, Enum):
     profile_images = "profile-images"
-    chatbot_files = "chatbot-files"
-    records_files = "records-files"
-    generated_images = "generated-images"
-    generated_videos = "generated-videos"
+    listings = "listings"
 
 
 class StorageService:
