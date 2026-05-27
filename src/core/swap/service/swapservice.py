@@ -286,6 +286,9 @@ class SwapService:
                 {"swap_request_id": swap_request.id, "payment_required": True},
             )
         else:
+            # Marker so unapproved requests (wrong default status, no ref) stay
+            # distinguishable from owner-approved requests when Paystack is off.
+            swap_request.initiator_paystack_ref = f"NOPAY-{swap_request.id}"
             self._notify(
                 swap_request.initiator_id,
                 "Swap approved",

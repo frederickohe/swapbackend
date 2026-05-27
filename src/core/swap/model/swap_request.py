@@ -26,7 +26,7 @@ class SwapRequest(Base):
     cash_difference: Mapped[float] = mapped_column(Float, default=0.0)
     credit_to_add: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(
-        String(40), nullable=False, default=SwapRequestStatus.PENDING_INITIATOR_FEE.value
+        String(40), nullable=False, default=SwapRequestStatus.PENDING_OWNER_APPROVAL.value
     )
     initiator_paystack_ref: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     owner_paystack_ref: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

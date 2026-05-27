@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
+from core.shared.enums import SwapRequestStatus
+
 
 class CreateSwapRequest(BaseModel):
     owner_listing_id: str
@@ -70,6 +72,20 @@ class SwapRequestResponse(BaseModel):
     class Config:
         orm_mode = True
 
+    @staticmethod
+    def effective_status(swap_request) -> str:
+        """Map legacy/wrong-default rows back to awaiting-owner when not approved yet."""
+        status = swap_request.status
+        ref = (swap_request.initiator_paystack_ref or "").strip()
+        if (
+            status == SwapRequestStatus.PENDING_INITIATOR_FEE.value
+            and not ref
+            and not swap_request.initiator_fee_paid
+            and swap_request.hub_id is None
+        ):
+            return SwapRequestStatus.PENDING_OWNER_APPROVAL.value
+        return status
+
     @classmethod
     def from_swap_request(cls, swap_request) -> "SwapRequestResponse":
         initiator_listing = getattr(swap_request, "initiator_listing", None)
@@ -88,7 +104,7 @@ class SwapRequestResponse(BaseModel):
             initiator_value_higher=swap_request.initiator_value_higher,
             cash_difference=swap_request.cash_difference,
             credit_to_add=swap_request.credit_to_add,
-            status=swap_request.status,
+            status=cls.effective_status(swap_request),
             hub_id=swap_request.hub_id,
             meeting_time=swap_request.meeting_time,
             expires_at=swap_request.expires_at,

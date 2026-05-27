@@ -32,7 +32,7 @@ def create_swap_request(
         user, request.owner_listing_id, request.initiator_listing_id
     )
     return {
-        "swap_request": SwapRequestResponse.from_orm(result["swap_request"]),
+        "swap_request": SwapRequestResponse.from_swap_request(result["swap_request"]),
         "payment": result["payment"],
         "fee_amount": result["fee_amount"],
         "difference_summary": result["difference_summary"],
@@ -42,7 +42,7 @@ def create_swap_request(
 @swap_routes.post("/requests/confirm-initiator-fee", response_model=SwapRequestResponse)
 def confirm_initiator_fee(request: PaymentConfirmRequest, db=Depends(get_db)):
     req = SwapService(db).confirm_initiator_fee(request.reference)
-    return SwapRequestResponse.from_orm(req)
+    return SwapRequestResponse.from_swap_request(req)
 
 
 @swap_routes.post("/requests/{swap_request_id}/reject", response_model=SwapRequestResponse)
@@ -52,7 +52,7 @@ def reject_request(
     db=Depends(get_db),
 ):
     req = SwapService(db).reject_swap_request(user, swap_request_id)
-    return SwapRequestResponse.from_orm(req)
+    return SwapRequestResponse.from_swap_request(req)
 
 
 @swap_routes.post("/requests/{swap_request_id}/approve")
@@ -63,7 +63,7 @@ def approve_request(
 ):
     result = SwapService(db).approve_swap_request(user, swap_request_id)
     return {
-        "swap_request": SwapRequestResponse.from_orm(result["swap_request"]),
+        "swap_request": SwapRequestResponse.from_swap_request(result["swap_request"]),
         "payment": result["payment"],
     }
 
@@ -71,7 +71,7 @@ def approve_request(
 @swap_routes.post("/requests/confirm-owner-fee", response_model=SwapRequestResponse)
 def confirm_owner_fee(request: PaymentConfirmRequest, db=Depends(get_db)):
     req = SwapService(db).confirm_owner_fee(request.reference)
-    return SwapRequestResponse.from_orm(req)
+    return SwapRequestResponse.from_swap_request(req)
 
 
 @swap_routes.get("/requests", response_model=List[SwapRequestResponse])
@@ -91,7 +91,7 @@ def get_request(
     db=Depends(get_db),
 ):
     req = SwapService(db).get_swap_request(user.id, swap_request_id)
-    return SwapRequestResponse.from_orm(req)
+    return SwapRequestResponse.from_swap_request(req)
 
 
 @swap_routes.get("/{swap_id}", response_model=SwapResponse)
