@@ -34,6 +34,7 @@ def home():
             "Authentication",
             "Listings & Search",
             "Swap Requests & Payments",
+            "Paystack (initialize / verify / config)",
             "Credit Wallet",
             "Swap Hubs",
             "Admin Dashboard",

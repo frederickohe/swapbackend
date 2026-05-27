@@ -22,6 +22,7 @@ _model_modules = [
 	"core.swap.model.swap_request",
 	"core.swap.model.swap",
 	"core.payment.model.transaction",
+	"core.paystack.model.paystack_session",
 	"core.credit.model.credit_transaction",
 ]
 

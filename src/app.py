@@ -20,6 +20,7 @@ from core.hub.controller.hubcontroller import hub_routes
 from core.swap.controller.swapcontroller import swap_routes
 from core.credit.controller.creditcontroller import credit_routes
 from core.admin.controller.admincontroller import admin_routes
+from core.paystack.controller.paystack_controller import paystack_routes
 
 from utilities.dbconfig import Base, engine
 from config import settings
@@ -122,6 +123,7 @@ app.include_router(hub_routes, prefix="/api/v1/hubs", tags=["Swap Hubs"])
 app.include_router(swap_routes, prefix="/api/v1/swaps", tags=["Swaps"])
 app.include_router(credit_routes, prefix="/api/v1/credit", tags=["Credit Wallet"])
 app.include_router(admin_routes, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(paystack_routes, prefix="/api/v1/paystack", tags=["Paystack"])
 
 
 # JWT Authentication Settings
