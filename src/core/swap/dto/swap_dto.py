@@ -32,6 +32,19 @@ class NoShowRequest(BaseModel):
     compensation_percent: float = 100.0
 
 
+class ListingSummary(BaseModel):
+    id: str
+    title: str
+    category: str
+    condition: str
+    primary_image_url: str
+    image_urls: Optional[list] = None
+    estimated_value: float
+
+    class Config:
+        orm_mode = True
+
+
 class SwapRequestResponse(BaseModel):
     id: str
     initiator_id: str
@@ -51,9 +64,42 @@ class SwapRequestResponse(BaseModel):
     meeting_time: Optional[datetime]
     expires_at: Optional[datetime]
     created_at: datetime
+    initiator_listing: Optional[ListingSummary] = None
+    owner_listing: Optional[ListingSummary] = None
 
     class Config:
         orm_mode = True
+
+    @classmethod
+    def from_swap_request(cls, swap_request) -> "SwapRequestResponse":
+        initiator_listing = getattr(swap_request, "initiator_listing", None)
+        owner_listing = getattr(swap_request, "owner_listing", None)
+        return cls(
+            id=swap_request.id,
+            initiator_id=swap_request.initiator_id,
+            owner_id=swap_request.owner_id,
+            initiator_listing_id=swap_request.initiator_listing_id,
+            owner_listing_id=swap_request.owner_listing_id,
+            initiator_fee_paid=swap_request.initiator_fee_paid,
+            owner_fee_paid=swap_request.owner_fee_paid,
+            initiator_fee_amount=swap_request.initiator_fee_amount,
+            owner_fee_amount=swap_request.owner_fee_amount,
+            difference_value=swap_request.difference_value,
+            initiator_value_higher=swap_request.initiator_value_higher,
+            cash_difference=swap_request.cash_difference,
+            credit_to_add=swap_request.credit_to_add,
+            status=swap_request.status,
+            hub_id=swap_request.hub_id,
+            meeting_time=swap_request.meeting_time,
+            expires_at=swap_request.expires_at,
+            created_at=swap_request.created_at,
+            initiator_listing=(
+                ListingSummary.from_orm(initiator_listing) if initiator_listing else None
+            ),
+            owner_listing=(
+                ListingSummary.from_orm(owner_listing) if owner_listing else None
+            ),
+        )
 
 
 class SwapResponse(BaseModel):

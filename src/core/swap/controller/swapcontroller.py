@@ -81,7 +81,7 @@ def list_requests(
     db=Depends(get_db),
 ):
     reqs = SwapService(db).list_user_swap_requests(user.id, role)
-    return [SwapRequestResponse.from_orm(r) for r in reqs]
+    return [SwapRequestResponse.from_swap_request(r) for r in reqs]
 
 
 @swap_routes.get("/requests/{swap_request_id}", response_model=SwapRequestResponse)

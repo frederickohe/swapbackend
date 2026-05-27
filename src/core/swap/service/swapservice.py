@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from config import settings
 from core.credit.service.creditservice import CreditService
@@ -431,7 +431,14 @@ class SwapService:
             query = query.filter(
                 (SwapRequest.initiator_id == user_id) | (SwapRequest.owner_id == user_id)
             )
-        requests = query.order_by(SwapRequest.created_at.desc()).all()
+        requests = (
+            query.options(
+                joinedload(SwapRequest.initiator_listing),
+                joinedload(SwapRequest.owner_listing),
+            )
+            .order_by(SwapRequest.created_at.desc())
+            .all()
+        )
         for req in requests:
             try:
                 self._expire_if_needed(req)
