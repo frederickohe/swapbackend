@@ -81,23 +81,23 @@ class AuthService:
             enabled=True,
             profile_picture_url=getattr(request, "profile_picture_url", None),
             
-            nationality=request.nationality,
-            date_of_birth=request.date_of_birth,
-            gender=request.gender,
-            address=request.address,
+            nationality=getattr(request, "nationality", None),
+            date_of_birth=getattr(request, "date_of_birth", None),
+            gender=getattr(request, "gender", None),
+            address=getattr(request, "address", None),
             
-            company=request.company,
-            current_branch=request.current_branch,
-            staff_id=request.staff_id,
+            company=getattr(request, "company", None),
+            current_branch=getattr(request, "current_branch", None),
+            staff_id=getattr(request, "staff_id", None),
             
-            facebook_url=request.facebook_url,
-            whatsapp_number=request.whatsapp_number,
-            linkedin_url=request.linkedin_url,
-            twitter_url=request.twitter_url,
-            instagram_url=request.instagram_url,
+            facebook_url=getattr(request, "facebook_url", None),
+            whatsapp_number=getattr(request, "whatsapp_number", None),
+            linkedin_url=getattr(request, "linkedin_url", None),
+            twitter_url=getattr(request, "twitter_url", None),
+            instagram_url=getattr(request, "instagram_url", None),
             
-            in_app_notification=request.in_app_notification,
-            sms_notification=request.sms_notification,
+            in_app_notification=getattr(request, "in_app_notification", None),
+            sms_notification=getattr(request, "sms_notification", None),
             
             created_at=datetime.now(timezone.utc),
         )
