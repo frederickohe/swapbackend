@@ -76,6 +76,25 @@ class SwapService:
             send_sms=True,
         )
 
+    def _paystack_available(self) -> bool:
+        return bool(settings.PAYSTACK_SECRET_KEY)
+
+    def _listing_party_summary(self, user: User, listing: Listing) -> str:
+        parts: list[str] = []
+        title = (listing.title or "").strip()
+        if title:
+            parts.append(title)
+        name = (user.fullname or "").strip()
+        if name:
+            parts.append(name)
+        phone = (user.phone or "").strip()
+        if phone:
+            parts.append(phone)
+        email = (user.email or "").strip()
+        if email:
+            parts.append(email)
+        return " · ".join(parts) if parts else "Contact details available in the app"
+
     def create_swap_request(
         self,
         initiator: User,
@@ -108,25 +127,25 @@ class SwapService:
             initiator_value_higher=diff["initiator_value_higher"],
             cash_difference=diff["cash_difference"],
             credit_to_add=diff["credit_to_add"],
-            status=SwapRequestStatus.PENDING_INITIATOR_FEE.value,
+            status=SwapRequestStatus.PENDING_OWNER_APPROVAL.value,
+        )
+        swap_request.expires_at = datetime.now(timezone.utc) + timedelta(
+            hours=settings.SWAP_REQUEST_EXPIRY_HOURS
         )
         self.db.add(swap_request)
         self.db.commit()
         self.db.refresh(swap_request)
 
-        reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
-        payment = self.paystack.initialize_transaction(
-            email=initiator.email,
-            amount_kobo=PaystackService.to_kobo(fee),
-            reference=reference,
-            metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+        self._notify(
+            swap_request.owner_id,
+            "New swap request",
+            "Someone wants to swap for your listing. Review and approve or reject.",
+            {"swap_request_id": swap_request.id},
         )
-        swap_request.initiator_paystack_ref = reference
-        self.db.commit()
 
         return {
             "swap_request": swap_request,
-            "payment": payment,
+            "payment": None,
             "fee_amount": fee,
             "difference_summary": diff,
         }
@@ -145,11 +164,13 @@ class SwapService:
         if swap_request.initiator_fee_paid:
             return swap_request
 
+        if swap_request.status != SwapRequestStatus.PENDING_INITIATOR_FEE.value:
+            raise HTTPException(
+                status_code=400,
+                detail="Swap request is not awaiting initiator payment",
+            )
+
         swap_request.initiator_fee_paid = True
-        swap_request.status = SwapRequestStatus.PENDING_OWNER_APPROVAL.value
-        swap_request.expires_at = datetime.now(timezone.utc) + timedelta(
-            hours=settings.SWAP_REQUEST_EXPIRY_HOURS
-        )
         tx = Transaction(
             id=generate_id(24),
             swap_request_id=swap_request.id,
@@ -160,16 +181,26 @@ class SwapService:
             status=TransactionStatus.SUCCESS.value,
         )
         self.db.add(tx)
-        self.db.commit()
-        self.db.refresh(swap_request)
 
-        self._notify(
-            swap_request.owner_id,
-            "New swap request",
-            "You received a new swap request. Review and approve or reject.",
-            {"swap_request_id": swap_request.id},
+        owner = self.db.query(User).filter(User.id == swap_request.owner_id).first()
+        own_listing = (
+            self.db.query(Listing)
+            .filter(Listing.id == swap_request.owner_listing_id)
+            .first()
         )
-        return swap_request
+        if owner and own_listing:
+            owner_summary = self._listing_party_summary(owner, own_listing)
+            self._notify(
+                swap_request.initiator_id,
+                "Owner details unlocked",
+                f"You can now view the owner's details: {owner_summary}",
+                {"swap_request_id": swap_request.id, "party": "owner"},
+            )
+
+        return self._finalize_swap_meeting(
+            swap_request,
+            initiator_reference=reference,
+        )
 
     def _refund_initiator(self, swap_request: SwapRequest, reason: str) -> None:
         if not swap_request.initiator_fee_paid or not swap_request.initiator_paystack_ref:
@@ -219,57 +250,98 @@ class SwapService:
             raise HTTPException(status_code=400, detail="Request is not awaiting approval")
         self._expire_if_needed(swap_request)
 
-        reference = f"SWP-OWN-{swap_request.id}-{generate_id(8)}"
-        payment = self.paystack.initialize_transaction(
-            email=owner.email,
-            amount_kobo=PaystackService.to_kobo(swap_request.owner_fee_amount),
-            reference=reference,
-            metadata={"swap_request_id": swap_request.id, "type": "owner_fee"},
+        initiator = (
+            self.db.query(User).filter(User.id == swap_request.initiator_id).first()
         )
-        swap_request.owner_paystack_ref = reference
-        swap_request.status = SwapRequestStatus.PENDING_OWNER_FEE.value
-        self.db.commit()
-        return {"swap_request": swap_request, "payment": payment}
-
-    def confirm_owner_fee(self, reference: str) -> SwapRequest:
-        verified = self.paystack.verify_transaction(reference)
-        if verified.get("status") != "success":
-            raise HTTPException(status_code=400, detail="Payment not successful")
-        swap_request = (
-            self.db.query(SwapRequest)
-            .filter(SwapRequest.owner_paystack_ref == reference)
+        init_listing = (
+            self.db.query(Listing)
+            .filter(Listing.id == swap_request.initiator_listing_id)
             .first()
         )
-        if not swap_request:
-            raise HTTPException(status_code=404, detail="Swap request not found")
+        if initiator and init_listing:
+            initiator_summary = self._listing_party_summary(initiator, init_listing)
+            self._notify(
+                swap_request.owner_id,
+                "Initiator details available",
+                f"The initiator's details: {initiator_summary}",
+                {"swap_request_id": swap_request.id, "party": "initiator"},
+            )
 
-        swap_request.owner_fee_paid = True
-        swap_request.status = SwapRequestStatus.PENDING_HUB_MEETING.value
+        swap_request.status = SwapRequestStatus.PENDING_INITIATOR_FEE.value
+        payment = None
 
-        initiator = self.db.query(User).filter(User.id == swap_request.initiator_id).first()
+        if self._paystack_available() and initiator:
+            reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
+            payment = self.paystack.initialize_transaction(
+                email=initiator.email,
+                amount_kobo=PaystackService.to_kobo(swap_request.initiator_fee_amount),
+                reference=reference,
+                metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+            )
+            swap_request.initiator_paystack_ref = reference
+            self._notify(
+                swap_request.initiator_id,
+                "Swap approved — payment required",
+                "Your swap was approved. Complete payment to view the owner's contact details.",
+                {"swap_request_id": swap_request.id, "payment_required": True},
+            )
+        else:
+            self._notify(
+                swap_request.initiator_id,
+                "Swap approved",
+                "Your swap was approved. You will pay to unlock the owner's contact details when payment is available.",
+                {"swap_request_id": swap_request.id},
+            )
+
+        self.db.commit()
+        self.db.refresh(swap_request)
+        return {"swap_request": swap_request, "payment": payment}
+
+    def _finalize_swap_meeting(
+        self,
+        swap_request: SwapRequest,
+        *,
+        initiator_reference: Optional[str] = None,
+        owner_reference: Optional[str] = None,
+    ) -> SwapRequest:
+        initiator = (
+            self.db.query(User).filter(User.id == swap_request.initiator_id).first()
+        )
         owner = self.db.query(User).filter(User.id == swap_request.owner_id).first()
-        init_listing = self.db.query(Listing).filter(Listing.id == swap_request.initiator_listing_id).first()
-        own_listing = self.db.query(Listing).filter(Listing.id == swap_request.owner_listing_id).first()
+        init_listing = (
+            self.db.query(Listing)
+            .filter(Listing.id == swap_request.initiator_listing_id)
+            .first()
+        )
+        own_listing = (
+            self.db.query(Listing)
+            .filter(Listing.id == swap_request.owner_listing_id)
+            .first()
+        )
 
-        lat1 = initiator.latitude or init_listing.location_lat or 0.0
-        lng1 = initiator.longitude or init_listing.location_lng or 0.0
-        lat2 = owner.latitude or own_listing.location_lat
-        lng2 = owner.longitude or own_listing.location_lng
+        lat1 = initiator.latitude or (init_listing.location_lat if init_listing else None) or 0.0
+        lng1 = initiator.longitude or (init_listing.location_lng if init_listing else None) or 0.0
+        lat2 = owner.latitude or (own_listing.location_lat if own_listing else None)
+        lng2 = owner.longitude or (own_listing.location_lng if own_listing else None)
         hub = self.hub_service.find_nearest_hub(lat1, lng1, lat2, lng2)
         swap_request.hub_id = hub.id
         meeting_time = self._next_meeting_slot(hub)
         swap_request.meeting_time = meeting_time
+        swap_request.status = SwapRequestStatus.PENDING_HUB_MEETING.value
 
-        tx = Transaction(
-            id=generate_id(24),
-            swap_request_id=swap_request.id,
-            user_id=swap_request.owner_id,
-            amount=swap_request.owner_fee_amount,
-            type=TransactionType.FEE.value,
-            paystack_reference=reference,
-            status=TransactionStatus.SUCCESS.value,
-        )
-        self.db.add(tx)
+        if owner_reference:
+            swap_request.owner_fee_paid = True
+            self.db.add(
+                Transaction(
+                    id=generate_id(24),
+                    swap_request_id=swap_request.id,
+                    user_id=swap_request.owner_id,
+                    amount=swap_request.owner_fee_amount,
+                    type=TransactionType.FEE.value,
+                    paystack_reference=owner_reference,
+                    status=TransactionStatus.SUCCESS.value,
+                )
+            )
 
         swap = Swap(
             id=generate_id(),
@@ -291,6 +363,23 @@ class SwapService:
                 {"hub_id": hub.id, "maps_url": maps_url, "swap_id": swap.id},
             )
         return swap_request
+
+    def confirm_owner_fee(self, reference: str) -> SwapRequest:
+        verified = self.paystack.verify_transaction(reference)
+        if verified.get("status") != "success":
+            raise HTTPException(status_code=400, detail="Payment not successful")
+        swap_request = (
+            self.db.query(SwapRequest)
+            .filter(SwapRequest.owner_paystack_ref == reference)
+            .first()
+        )
+        if not swap_request:
+            raise HTTPException(status_code=404, detail="Swap request not found")
+
+        return self._finalize_swap_meeting(
+            swap_request,
+            owner_reference=reference,
+        )
 
     def _next_meeting_slot(self, hub) -> datetime:
         slots = hub.meeting_slots or ["09:00", "11:00", "14:00", "16:00"]
