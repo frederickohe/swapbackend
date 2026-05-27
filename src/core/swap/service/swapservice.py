@@ -267,10 +267,53 @@ class SwapService:
                 {"swap_request_id": swap_request.id, "party": "initiator"},
             )
 
+        # Owner approval only updates status — Paystack runs when the initiator pays.
         swap_request.status = SwapRequestStatus.PENDING_INITIATOR_FEE.value
-        payment = None
+        swap_request.initiator_paystack_ref = f"APPROVED-{swap_request.id}"
 
-        if self._paystack_available() and initiator:
+        self._notify(
+            swap_request.initiator_id,
+            "Swap approved — payment required",
+            "Your swap was approved. Pay your commitment fee in Swap Bay to continue.",
+            {"swap_request_id": swap_request.id, "payment_required": True},
+        )
+        self._notify(
+            swap_request.owner_id,
+            "Swap offer accepted",
+            "You accepted the swap offer. Waiting for the initiator to pay their commitment fee.",
+            {"swap_request_id": swap_request.id},
+        )
+
+        self.db.commit()
+        self.db.refresh(swap_request)
+        return {"swap_request": swap_request, "payment": None}
+
+    def initialize_initiator_fee_payment(
+        self, initiator: User, swap_request_id: str
+    ) -> dict:
+        swap_request = (
+            self.db.query(SwapRequest)
+            .filter(SwapRequest.id == swap_request_id)
+            .first()
+        )
+        if not swap_request:
+            raise HTTPException(status_code=404, detail="Swap request not found")
+        if swap_request.initiator_id != initiator.id:
+            raise HTTPException(status_code=403, detail="Only the initiator can pay this fee")
+        if swap_request.status != SwapRequestStatus.PENDING_INITIATOR_FEE.value:
+            raise HTTPException(
+                status_code=400,
+                detail="Swap request is not awaiting initiator payment",
+            )
+        if swap_request.initiator_fee_paid:
+            raise HTTPException(status_code=400, detail="Initiator fee already paid")
+
+        payment = None
+        ref = (swap_request.initiator_paystack_ref or "").strip()
+        if ref.startswith("SWP-INIT-"):
+            return {"swap_request": swap_request, "payment": None}
+
+        if self._paystack_available():
             reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
             payment = self.paystack.initialize_transaction(
                 email=initiator.email,
@@ -279,22 +322,8 @@ class SwapService:
                 metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
             )
             swap_request.initiator_paystack_ref = reference
-            self._notify(
-                swap_request.initiator_id,
-                "Swap approved — payment required",
-                "Your swap was approved. Complete payment to view the owner's contact details.",
-                {"swap_request_id": swap_request.id, "payment_required": True},
-            )
         else:
-            # Marker so unapproved requests (wrong default status, no ref) stay
-            # distinguishable from owner-approved requests when Paystack is off.
             swap_request.initiator_paystack_ref = f"NOPAY-{swap_request.id}"
-            self._notify(
-                swap_request.initiator_id,
-                "Swap approved",
-                "Your swap was approved. You will pay to unlock the owner's contact details when payment is available.",
-                {"swap_request_id": swap_request.id},
-            )
 
         self.db.commit()
         self.db.refresh(swap_request)

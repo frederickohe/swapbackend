@@ -77,6 +77,8 @@ class SwapRequestResponse(BaseModel):
         """Map legacy/wrong-default rows back to awaiting-owner when not approved yet."""
         status = swap_request.status
         ref = (swap_request.initiator_paystack_ref or "").strip()
+        if ref.startswith("APPROVED-") or ref.startswith("NOPAY-"):
+            return status
         if (
             status == SwapRequestStatus.PENDING_INITIATOR_FEE.value
             and not ref

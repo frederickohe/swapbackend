@@ -68,6 +68,20 @@ def approve_request(
     }
 
 
+@swap_routes.post("/requests/{swap_request_id}/initiator-fee")
+def initialize_initiator_fee(
+    swap_request_id: str,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Start Paystack checkout for the initiator commitment fee (after owner approval)."""
+    result = SwapService(db).initialize_initiator_fee_payment(user, swap_request_id)
+    return {
+        "swap_request": SwapRequestResponse.from_swap_request(result["swap_request"]),
+        "payment": result["payment"],
+    }
+
+
 @swap_routes.post("/requests/confirm-owner-fee", response_model=SwapRequestResponse)
 def confirm_owner_fee(request: PaymentConfirmRequest, db=Depends(get_db)):
     req = SwapService(db).confirm_owner_fee(request.reference)
