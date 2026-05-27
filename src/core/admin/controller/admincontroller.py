@@ -2,13 +2,33 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from core.admin.dto.admin_dto import AdminResolveSwapRequest, MetricsResponse
+from core.admin.dto.admin_dto import (
+    AdminCreateRequest,
+    AdminCreateResponse,
+    AdminResolveSwapRequest,
+    MetricsResponse,
+)
 from core.admin.service.adminservice import AdminService
 from core.credit.dto.credit_dto import AdminCreditOverrideRequest, CreditTransactionResponse
 from core.swap.dto.swap_dto import SwapResponse
-from utilities.deps import get_db, require_admin
+from utilities.deps import get_db, require_admin, require_admin_creator
 
 admin_routes = APIRouter()
+
+
+@admin_routes.post("/users", response_model=AdminCreateResponse)
+def create_admin_user(
+    request: AdminCreateRequest,
+    db=Depends(get_db),
+    creator=Depends(require_admin_creator),
+):
+    """
+    Create an admin or official account.
+
+    - First admin: send `X-Admin-Setup-Secret` header (must match `ADMIN_SETUP_SECRET` in `.env`).
+    - After that: sign in as an existing admin/official and send the JWT as usual.
+    """
+    return AdminService(db).create_admin(request, creator)
 
 
 @admin_routes.get("/metrics", response_model=MetricsResponse)

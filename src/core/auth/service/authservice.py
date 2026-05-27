@@ -10,6 +10,7 @@ from core.auth.service.sessiondriver import SessionDriver
 from core.exceptions.AuthException import InvalidCredentialsError
 from core.exceptions.UserException import UserAlreadyExistsError
 from core.user.model.User import User
+from core.shared.enums import UserRole
 from core.notification.model.Notification import (
     Notification,
     NotificationStatus,
@@ -50,7 +51,7 @@ class AuthService:
         alphabet = string.ascii_letters + string.digits
         return "".join(secrets.choice(alphabet) for i in range(16))
 
-    def create_user(self, request: BaseModel):
+    def create_user(self, request: BaseModel, *, role: str = UserRole.USER.value):
         """Create a new user in the database."""
         existing_user = (
             self.db.query(User)
@@ -76,8 +77,9 @@ class AuthService:
             phone=normalized_phone or request.phone,
             email=request.email,
             hashed_password=self.hash_password(request.password),
+            role=role,
             enabled=True,
-            profile_picture_url=request.profile_picture_url,
+            profile_picture_url=getattr(request, "profile_picture_url", None),
             
             nationality=request.nationality,
             date_of_birth=request.date_of_birth,

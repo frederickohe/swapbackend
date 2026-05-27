@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     DEFAULT_CURRENCY: str = os.environ.get("DEFAULT_CURRENCY", "GHS")
     GOOGLE_MAPS_API_KEY: str = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 
+    # Required in the request header to create the first admin when none exist.
+    ADMIN_SETUP_SECRET: str = os.environ.get("ADMIN_SETUP_SECRET", "")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -13,6 +13,8 @@ from core.shared.enums import ListingStatus, SwapRequestStatus, SwapStatus, Tran
 from core.swap.model.swap import Swap
 from core.swap.model.swap_request import SwapRequest
 from core.swap.service.swapservice import SwapService
+from core.auth.service.authservice import AuthService
+from core.shared.enums import UserRole
 from core.user.model.User import User
 
 
@@ -21,6 +23,25 @@ class AdminService:
         self.db = db
         self.swap_service = SwapService(db)
         self.credit_service = CreditService(db)
+
+    def create_admin(self, request, creator: User | None) -> dict:
+        if creator is None:
+            role = UserRole.ADMIN.value
+        else:
+            if request.role not in (UserRole.ADMIN, UserRole.OFFICIAL):
+                raise HTTPException(
+                    status_code=400,
+                    detail="role must be ADMIN or OFFICIAL",
+                )
+            role = request.role.value
+
+        result = AuthService(self.db).create_user(request, role=role)
+        return {
+            "message": "Admin account created successfully",
+            "user_id": result["user_id"],
+            "email": request.email,
+            "role": role,
+        }
 
     def get_metrics(self) -> dict:
         total_users = self.db.query(func.count(User.id)).scalar()
