@@ -188,7 +188,15 @@ class SwapService:
         if not swap_request:
             raise HTTPException(status_code=404, detail="Swap request not found")
         if swap_request.initiator_fee_paid:
-            return swap_request
+            if (
+                swap_request.status == SwapRequestStatus.PENDING_HUB_MEETING.value
+                and swap_request.swap
+            ):
+                return swap_request
+            return self._finalize_swap_meeting(
+                swap_request,
+                initiator_reference=reference,
+            )
 
         if swap_request.status != SwapRequestStatus.PENDING_INITIATOR_FEE.value:
             raise HTTPException(
@@ -371,28 +379,8 @@ class SwapService:
         initiator_reference: Optional[str] = None,
         owner_reference: Optional[str] = None,
     ) -> SwapRequest:
-        initiator = (
-            self.db.query(User).filter(User.id == swap_request.initiator_id).first()
-        )
-        owner = self.db.query(User).filter(User.id == swap_request.owner_id).first()
-        init_listing = (
-            self.db.query(Listing)
-            .filter(Listing.id == swap_request.initiator_listing_id)
-            .first()
-        )
-        own_listing = (
-            self.db.query(Listing)
-            .filter(Listing.id == swap_request.owner_listing_id)
-            .first()
-        )
-
-        lat1 = initiator.latitude or (init_listing.location_lat if init_listing else None) or 0.0
-        lng1 = initiator.longitude or (init_listing.location_lng if init_listing else None) or 0.0
-        lat2 = owner.latitude or (own_listing.location_lat if own_listing else None)
-        lng2 = owner.longitude or (own_listing.location_lng if own_listing else None)
-        hub = self.hub_service.find_nearest_hub(lat1, lng1, lat2, lng2)
-        swap_request.hub_id = hub.id
-        meeting_time = self._next_meeting_slot(hub)
+        meeting_time = self._default_meeting_time()
+        swap_request.hub_id = None
         swap_request.meeting_time = meeting_time
         swap_request.status = SwapRequestStatus.PENDING_HUB_MEETING.value
 
@@ -410,10 +398,15 @@ class SwapService:
                 )
             )
 
+        if swap_request.swap:
+            self.db.commit()
+            self.db.refresh(swap_request)
+            return swap_request
+
         swap = Swap(
             id=generate_id(),
             swap_request_id=swap_request.id,
-            hub_id=hub.id,
+            hub_id=None,
             meeting_time=meeting_time,
             status=SwapStatus.PENDING.value,
         )
@@ -421,13 +414,12 @@ class SwapService:
         self.db.commit()
         self.db.refresh(swap_request)
 
-        maps_url = self.hub_service.maps_url(hub)
         for uid in (swap_request.initiator_id, swap_request.owner_id):
             self._notify(
                 uid,
-                "Swap scheduled",
-                f"Meet at {hub.name} on {meeting_time.isoformat()}.",
-                {"hub_id": hub.id, "maps_url": maps_url, "swap_id": swap.id},
+                "Ready to swap",
+                "Payment confirmed. Open Swap Bay → Ready Swaps to view receiver details and item locations.",
+                {"swap_request_id": swap_request.id, "swap_id": swap.id},
             )
         return swap_request
 
@@ -448,17 +440,11 @@ class SwapService:
             owner_reference=reference,
         )
 
-    def _next_meeting_slot(self, hub) -> datetime:
-        slots = hub.meeting_slots or ["09:00", "11:00", "14:00", "16:00"]
+    def _default_meeting_time(self) -> datetime:
+        """Suggested meet-up window; parties coordinate directly at listing locations."""
         now = datetime.now(timezone.utc)
-        for day_offset in range(1, 8):
-            day = now + timedelta(days=day_offset)
-            for slot in slots:
-                hour, minute = map(int, slot.split(":"))
-                dt = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                if dt > now:
-                    return dt
-        return now + timedelta(days=2)
+        target = now + timedelta(days=3)
+        return target.replace(hour=10, minute=0, second=0, microsecond=0)
 
     def _get_request_for_owner(self, owner: User, swap_request_id: str) -> SwapRequest:
         swap_request = self.db.query(SwapRequest).filter(SwapRequest.id == swap_request_id).first()
@@ -531,7 +517,13 @@ class SwapService:
 
         hub = swap_request.hub
         swap = swap_request.swap
-        maps_url = self.hub_service.maps_url(hub) if hub else None
+        maps_url = None
+        lat = counterparty_listing.location_lat
+        lng = counterparty_listing.location_lng
+        if lat is not None and lng is not None:
+            maps_url = HubService.maps_url_for_coords(lat, lng)
+        elif hub:
+            maps_url = self.hub_service.maps_url(hub)
 
         return {
             "swap_request_id": swap_request.id,
@@ -589,13 +581,33 @@ class SwapService:
         return requests
 
     def get_swap(self, user_id: str, swap_id: str) -> Swap:
-        swap = self.db.query(Swap).filter(Swap.id == swap_id).first()
+        swap = (
+            self.db.query(Swap)
+            .options(
+                joinedload(Swap.swap_request).joinedload(SwapRequest.owner_listing),
+                joinedload(Swap.swap_request).joinedload(SwapRequest.initiator_listing),
+                joinedload(Swap.hub),
+            )
+            .filter(Swap.id == swap_id)
+            .first()
+        )
         if not swap:
             raise HTTPException(status_code=404, detail="Swap not found")
         req = swap.swap_request
         if user_id not in (req.initiator_id, req.owner_id):
             raise HTTPException(status_code=403, detail="Access denied")
         return swap
+
+    def maps_url_for_swap(self, swap: Swap) -> Optional[str]:
+        if swap.hub_id and swap.hub:
+            return self.hub_service.maps_url(swap.hub)
+        req = swap.swap_request
+        if not req:
+            return None
+        listing = req.owner_listing or req.initiator_listing
+        if listing and listing.location_lat is not None and listing.location_lng is not None:
+            return HubService.maps_url_for_coords(listing.location_lat, listing.location_lng)
+        return None
 
     def mark_attendance(
         self,

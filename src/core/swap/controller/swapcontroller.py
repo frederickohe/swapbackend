@@ -3,7 +3,6 @@ from typing import List
 from fastapi import APIRouter, Depends, Request as FastAPIRequest
 
 from config import settings
-from core.hub.service.hubservice import HubService
 from core.payment.service.paystackservice import PaystackService
 from core.swap.dto.swap_dto import (
     ApproveSwapRequest,
@@ -137,10 +136,8 @@ def get_swap(
     db=Depends(get_db),
 ):
     swap = SwapService(db).get_swap(user.id, swap_id)
-    hub_service = HubService(db)
-    hub = hub_service.get_hub(swap.hub_id)
     resp = SwapResponse.from_orm(swap)
-    resp.maps_url = hub_service.maps_url(hub)
+    resp.maps_url = SwapService(db).maps_url_for_swap(swap)
     return resp
 
 

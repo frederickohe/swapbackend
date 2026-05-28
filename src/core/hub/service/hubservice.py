@@ -73,8 +73,12 @@ class HubService:
             key=lambda h: self.haversine_km(mid_lat, mid_lng, h.latitude, h.longitude),
         )
 
-    def maps_url(self, hub: Hub) -> str:
+    @staticmethod
+    def maps_url_for_coords(latitude: float, longitude: float) -> str:
         return (
             f"https://www.google.com/maps/dir/?api=1"
-            f"&destination={hub.latitude},{hub.longitude}"
+            f"&destination={latitude},{longitude}"
         )
+
+    def maps_url(self, hub: Hub) -> str:
+        return self.maps_url_for_coords(hub.latitude, hub.longitude)

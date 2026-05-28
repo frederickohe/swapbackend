@@ -16,7 +16,7 @@ class Swap(Base):
     swap_request_id: Mapped[str] = mapped_column(
         String(20), ForeignKey("swap_requests.id"), nullable=False, unique=True
     )
-    hub_id: Mapped[str] = mapped_column(String(20), ForeignKey("hubs.id"), nullable=False)
+    hub_id: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("hubs.id"), nullable=True)
     meeting_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default=SwapStatus.PENDING.value)
     initiator_attended: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)

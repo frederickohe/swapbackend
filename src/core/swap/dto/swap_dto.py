@@ -78,7 +78,9 @@ class SwapRequestResponse(BaseModel):
         ref = (swap_request.initiator_paystack_ref or "").strip()
         if ref.startswith(("APPROVED-", "SWP-INIT-", "NOPAY-")):
             return True
-        if swap_request.initiator_fee_paid or swap_request.hub_id:
+        if swap_request.initiator_fee_paid:
+            return True
+        if swap_request.hub_id:
             return True
         return False
 
@@ -158,7 +160,7 @@ class SwapMeetupDetailsResponse(BaseModel):
 class SwapResponse(BaseModel):
     id: str
     swap_request_id: str
-    hub_id: str
+    hub_id: Optional[str] = None
     meeting_time: datetime
     status: str
     initiator_attended: Optional[bool]
