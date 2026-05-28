@@ -108,6 +108,9 @@ services:
       CONTABO_BUCKET: ${CONTABO_BUCKET:-swappro}
       CONTABO_ENDPOINT: ${CONTABO_ENDPOINT:-https://usc1.contabostorage.com}
 
+      # Flat swap transaction fee in GHS for testing (default 1). Set to "" to use TRANSACTION_FEE_PERCENT.
+      TRANSACTION_FEE_FIXED_GHS: ${TRANSACTION_FEE_FIXED_GHS:-1}
+
     depends_on:
       - db
       - redis
