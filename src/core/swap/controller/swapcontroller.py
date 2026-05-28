@@ -69,6 +69,16 @@ def approve_request(
     }
 
 
+@swap_routes.post("/requests/{swap_request_id}/cancel", response_model=SwapRequestResponse)
+def cancel_request(
+    swap_request_id: str,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    req = SwapService(db).cancel_swap_request(user, swap_request_id)
+    return SwapRequestResponse.from_swap_request(req)
+
+
 @swap_routes.post("/requests/{swap_request_id}/initiator-fee")
 def initialize_initiator_fee(
     swap_request_id: str,

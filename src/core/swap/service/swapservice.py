@@ -329,6 +329,60 @@ class SwapService:
         self.db.refresh(swap_request)
         return {"swap_request": swap_request, "payment": None}
 
+    def cancel_swap_request(self, initiator: User, swap_request_id: str) -> SwapRequest:
+        """Withdraw a sent swap request as the initiator."""
+        swap_request = (
+            self.db.query(SwapRequest).filter(SwapRequest.id == swap_request_id).first()
+        )
+        if not swap_request:
+            raise HTTPException(status_code=404, detail="Swap request not found")
+        if swap_request.initiator_id != initiator.id:
+            raise HTTPException(
+                status_code=403, detail="Only the initiator can cancel this request"
+            )
+
+        self._expire_if_needed(swap_request)
+
+        if swap_request.status in (
+            SwapRequestStatus.REJECTED.value,
+            SwapRequestStatus.EXPIRED.value,
+            SwapRequestStatus.CANCELLED.value,
+        ):
+            raise HTTPException(status_code=400, detail="Swap request is already closed")
+
+        if swap_request.status not in (
+            SwapRequestStatus.PENDING_OWNER_APPROVAL.value,
+            SwapRequestStatus.PENDING_INITIATOR_FEE.value,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Swap request cannot be cancelled at this stage",
+            )
+
+        if swap_request.initiator_fee_paid:
+            raise HTTPException(
+                status_code=400,
+                detail="Swap request cannot be cancelled after payment",
+            )
+
+        swap_request.status = SwapRequestStatus.CANCELLED.value
+        self.db.commit()
+        self.db.refresh(swap_request)
+
+        self._notify(
+            swap_request.initiator_id,
+            "Swap request cancelled",
+            "You cancelled your swap request.",
+            {"swap_request_id": swap_request.id},
+        )
+        self._notify(
+            swap_request.owner_id,
+            "Swap request withdrawn",
+            "A swap request was withdrawn by the initiator.",
+            {"swap_request_id": swap_request.id},
+        )
+        return swap_request
+
     def initialize_initiator_fee_payment(
         self, initiator: User, swap_request_id: str, *, request_base: str | None = None
     ) -> dict:
