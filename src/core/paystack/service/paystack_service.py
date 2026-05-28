@@ -51,7 +51,7 @@ class PaystackService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         reference = request.reference or self.generate_reference()
-        callback_url = request.callback_url or settings.PAYSTACK_CALLBACK_URL or None
+        callback_url = request.callback_url or settings.resolved_paystack_callback_url()
 
         metadata = {"user_id": user_id, "user_email": user.email}
         if request.metadata:

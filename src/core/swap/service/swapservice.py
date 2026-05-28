@@ -322,7 +322,7 @@ class SwapService:
         return {"swap_request": swap_request, "payment": None}
 
     def initialize_initiator_fee_payment(
-        self, initiator: User, swap_request_id: str
+        self, initiator: User, swap_request_id: str, *, request_base: str | None = None
     ) -> dict:
         swap_request = (
             self.db.query(SwapRequest)
@@ -350,11 +350,13 @@ class SwapService:
             )
 
         reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
+        callback_url = settings.resolved_paystack_callback_url(request_base)
         payment = self.paystack.initialize_transaction(
             email=initiator.email,
             amount_kobo=PaystackService.to_kobo(swap_request.initiator_fee_amount),
             reference=reference,
             metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+            callback_url=callback_url,
         )
         swap_request.initiator_paystack_ref = reference
 

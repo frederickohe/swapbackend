@@ -1,7 +1,8 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request as FastAPIRequest
 
+from config import settings
 from core.hub.service.hubservice import HubService
 from core.payment.service.paystackservice import PaystackService
 from core.swap.dto.swap_dto import (
@@ -72,14 +73,22 @@ def approve_request(
 @swap_routes.post("/requests/{swap_request_id}/initiator-fee")
 def initialize_initiator_fee(
     swap_request_id: str,
+    request: FastAPIRequest,
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
     """Start Paystack checkout for the initiator commitment fee (after owner approval)."""
-    result = SwapService(db).initialize_initiator_fee_payment(user, swap_request_id)
+    request_base = str(request.base_url).rstrip("/")
+    result = SwapService(db).initialize_initiator_fee_payment(
+        user, swap_request_id, request_base=request_base
+    )
+    payment = dict(result["payment"] or {})
+    callback_url = settings.resolved_paystack_callback_url(request_base)
+    if callback_url:
+        payment["callback_url"] = callback_url
     return {
         "swap_request": SwapRequestResponse.from_swap_request(result["swap_request"]),
-        "payment": result["payment"],
+        "payment": payment,
     }
 
 
@@ -185,7 +194,7 @@ def handle_no_show(
 
 
 @swap_routes.post("/webhooks/paystack")
-async def paystack_webhook(request: Request, db=Depends(get_db)):
+async def paystack_webhook(request: FastAPIRequest, db=Depends(get_db)):
     body = await request.body()
     signature = request.headers.get("x-paystack-signature", "")
     paystack = PaystackService()

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
 
 from config import settings
 from core.paystack.dto.request.paystack_request import PaystackInitializeRequest
@@ -13,6 +14,30 @@ from utilities.deps import get_current_user, get_db
 
 paystack_routes = APIRouter()
 
+_PAYSTACK_RETURN_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Payment received</title>
+  <style>
+    body { font-family: system-ui, sans-serif; text-align: center; padding: 48px 24px; }
+    h1 { font-size: 1.25rem; font-weight: 600; }
+    p { color: #444; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>Payment received</h1>
+  <p>You can close this page and return to Swap Pro.</p>
+</body>
+</html>"""
+
+
+@paystack_routes.get("/return", response_class=HTMLResponse)
+def paystack_return():
+    """Paystack redirects here after checkout; the mobile WebView listens for this URL."""
+    return HTMLResponse(content=_PAYSTACK_RETURN_HTML)
+
 
 @paystack_routes.get("/config", response_model=PaystackConfigResponse)
 def get_paystack_config(user: User = Depends(get_current_user)):
@@ -22,7 +47,7 @@ def get_paystack_config(user: User = Depends(get_current_user)):
     return PaystackConfigResponse(
         public_key=settings.PAYSTACK_PUBLIC_KEY,
         currency=settings.DEFAULT_CURRENCY,
-        callback_url=settings.PAYSTACK_CALLBACK_URL or None,
+        callback_url=settings.resolved_paystack_callback_url(),
     )
 
 

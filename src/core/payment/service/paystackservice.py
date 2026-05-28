@@ -40,15 +40,18 @@ class PaystackService:
         amount_kobo: int,
         reference: str,
         metadata: Optional[dict] = None,
+        callback_url: Optional[str] = None,
     ) -> Dict[str, Any]:
+        resolved_callback = callback_url or settings.resolved_paystack_callback_url()
         payload = {
             "email": email,
             "amount": amount_kobo,
             "reference": reference,
             "currency": settings.DEFAULT_CURRENCY,
-            "callback_url": settings.PAYSTACK_CALLBACK_URL or None,
             "metadata": metadata or {},
         }
+        if resolved_callback:
+            payload["callback_url"] = resolved_callback
         return self._request("POST", "/transaction/initialize", json=payload)
 
     def verify_transaction(self, reference: str) -> Dict[str, Any]:

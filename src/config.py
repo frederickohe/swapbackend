@@ -80,6 +80,17 @@ class Settings(BaseSettings):
     PAYSTACK_SECRET_KEY: str = os.environ.get("PAYSTACK_SECRET_KEY", "")
     PAYSTACK_PUBLIC_KEY: str = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
     PAYSTACK_CALLBACK_URL: str = os.environ.get("PAYSTACK_CALLBACK_URL", "")
+    # Optional override when PAYSTACK_CALLBACK_URL is unset (otherwise derived per-request).
+    PUBLIC_API_BASE_URL: str = os.environ.get("PUBLIC_API_BASE_URL", "")
+
+    def resolved_paystack_callback_url(self, request_base: str | None = None) -> str | None:
+        explicit = (self.PAYSTACK_CALLBACK_URL or "").strip()
+        if explicit:
+            return explicit
+        base = (self.PUBLIC_API_BASE_URL or request_base or "").strip().rstrip("/")
+        if not base:
+            return None
+        return f"{base}/api/v1/paystack/return"
     TRANSACTION_FEE_PERCENT: float = float(os.environ.get("TRANSACTION_FEE_PERCENT", "5"))
     # Flat fee in GHS for testing (default 1). Set to empty string to use TRANSACTION_FEE_PERCENT instead.
     TRANSACTION_FEE_FIXED_GHS: float | None = (
