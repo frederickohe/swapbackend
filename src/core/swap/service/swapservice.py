@@ -372,6 +372,24 @@ class SwapService:
         self.db.refresh(swap_request)
         return {"swap_request": swap_request, "payment": payment}
 
+    def _ensure_ready_after_payment(self, swap_request: SwapRequest) -> None:
+        """Backfill ready-swap state when fee is paid but finalize did not complete."""
+        if not swap_request.initiator_fee_paid:
+            return
+        if swap_request.status in (
+            SwapRequestStatus.REJECTED.value,
+            SwapRequestStatus.EXPIRED.value,
+            SwapRequestStatus.CANCELLED.value,
+        ):
+            return
+        needs_finalize = (
+            swap_request.status != SwapRequestStatus.PENDING_HUB_MEETING.value
+            or swap_request.swap is None
+        )
+        if not needs_finalize:
+            return
+        self._finalize_swap_meeting(swap_request)
+
     def _finalize_swap_meeting(
         self,
         swap_request: SwapRequest,
@@ -492,10 +510,17 @@ class SwapService:
             raise HTTPException(status_code=404, detail="Swap request not found")
         if user_id not in (swap_request.initiator_id, swap_request.owner_id):
             raise HTTPException(status_code=403, detail="Access denied")
-        if swap_request.status != SwapRequestStatus.PENDING_HUB_MEETING.value:
+        if not swap_request.initiator_fee_paid:
             raise HTTPException(
                 status_code=403,
                 detail="Meetup details are available after the transaction fee is paid",
+            )
+        self._ensure_ready_after_payment(swap_request)
+        self.db.refresh(swap_request)
+        if swap_request.status != SwapRequestStatus.PENDING_HUB_MEETING.value:
+            raise HTTPException(
+                status_code=403,
+                detail="Meetup details are not available for this swap yet",
             )
 
         is_initiator = user_id == swap_request.initiator_id
@@ -564,6 +589,7 @@ class SwapService:
             query.options(
                 joinedload(SwapRequest.initiator_listing),
                 joinedload(SwapRequest.owner_listing),
+                joinedload(SwapRequest.swap),
             )
             .order_by(SwapRequest.created_at.desc())
             .all()
@@ -576,6 +602,8 @@ class SwapService:
                 pass
             if self._sync_unpaid_fee_from_settings(req):
                 fee_updated = True
+            if req.initiator_fee_paid:
+                self._ensure_ready_after_payment(req)
         if fee_updated:
             self.db.commit()
         return requests

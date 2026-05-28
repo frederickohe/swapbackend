@@ -86,9 +86,16 @@ class SwapRequestResponse(BaseModel):
 
     @staticmethod
     def effective_status(swap_request) -> str:
-        """Map legacy/wrong-default rows back to awaiting-owner when not approved yet."""
+        """Normalize status for API clients (Swap Bay tabs)."""
         status = swap_request.status
         ref = (swap_request.initiator_paystack_ref or "").strip()
+
+        if swap_request.initiator_fee_paid and status in (
+            SwapRequestStatus.PENDING_INITIATOR_FEE.value,
+            SwapRequestStatus.PENDING_OWNER_FEE.value,
+        ):
+            return SwapRequestStatus.PENDING_HUB_MEETING.value
+
         if ref.startswith("APPROVED-") or ref.startswith("NOPAY-"):
             return status
         if (
