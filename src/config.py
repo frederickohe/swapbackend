@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     PAYSTACK_PUBLIC_KEY: str = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
     PAYSTACK_CALLBACK_URL: str = os.environ.get("PAYSTACK_CALLBACK_URL", "")
     TRANSACTION_FEE_PERCENT: float = float(os.environ.get("TRANSACTION_FEE_PERCENT", "5"))
+    # Flat fee in GHS for testing (default 1). Set to empty string to use TRANSACTION_FEE_PERCENT instead.
+    TRANSACTION_FEE_FIXED_GHS: float | None = (
+        float(os.environ["TRANSACTION_FEE_FIXED_GHS"])
+        if os.environ.get("TRANSACTION_FEE_FIXED_GHS", "1").strip() != ""
+        else None
+    )
     REFUND_PROCESSING_FEE_PERCENT: float = float(os.environ.get("REFUND_PROCESSING_FEE_PERCENT", "1"))
     SWAP_REQUEST_EXPIRY_HOURS: int = int(os.environ.get("SWAP_REQUEST_EXPIRY_HOURS", "72"))
     LISTING_EXPIRY_DAYS: int = int(os.environ.get("LISTING_EXPIRY_DAYS", "30"))

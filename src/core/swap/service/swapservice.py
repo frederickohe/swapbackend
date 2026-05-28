@@ -39,6 +39,9 @@ class SwapService:
         self.notifications = NotificationService(db)
 
     def _fee_amount(self, value_a: float, value_b: float) -> float:
+        fixed = settings.TRANSACTION_FEE_FIXED_GHS
+        if fixed is not None:
+            return round(fixed, 2)
         higher = max(value_a, value_b)
         return round(higher * (settings.TRANSACTION_FEE_PERCENT / 100), 2)
 
