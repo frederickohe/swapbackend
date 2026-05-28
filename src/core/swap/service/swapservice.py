@@ -45,6 +45,29 @@ class SwapService:
         higher = max(value_a, value_b)
         return round(higher * (settings.TRANSACTION_FEE_PERCENT / 100), 2)
 
+    def _sync_unpaid_fee_from_settings(self, swap_request: SwapRequest) -> bool:
+        """Align stored fees with current config for swaps awaiting initiator payment."""
+        if swap_request.initiator_fee_paid:
+            return False
+        if swap_request.status != SwapRequestStatus.PENDING_INITIATOR_FEE.value:
+            return False
+        init_listing = swap_request.initiator_listing
+        own_listing = swap_request.owner_listing
+        if not init_listing or not own_listing:
+            return False
+        fee = self._fee_amount(
+            float(init_listing.estimated_value or 0),
+            float(own_listing.estimated_value or 0),
+        )
+        if (
+            swap_request.initiator_fee_amount == fee
+            and swap_request.owner_fee_amount == fee
+        ):
+            return False
+        swap_request.initiator_fee_amount = fee
+        swap_request.owner_fee_amount = fee
+        return True
+
     def _calculate_difference(self, initiator_value: float, owner_value: float) -> dict:
         diff = abs(initiator_value - owner_value)
         if initiator_value > owner_value:
@@ -318,22 +341,22 @@ class SwapService:
         if swap_request.initiator_fee_paid:
             raise HTTPException(status_code=400, detail="Initiator fee already paid")
 
-        payment = None
-        ref = (swap_request.initiator_paystack_ref or "").strip()
-        if ref.startswith("SWP-INIT-"):
-            return {"swap_request": swap_request, "payment": None}
+        self._sync_unpaid_fee_from_settings(swap_request)
 
-        if self._paystack_available():
-            reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
-            payment = self.paystack.initialize_transaction(
-                email=initiator.email,
-                amount_kobo=PaystackService.to_kobo(swap_request.initiator_fee_amount),
-                reference=reference,
-                metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+        if not self._paystack_available():
+            raise HTTPException(
+                status_code=503,
+                detail="Paystack is not configured on the server. Payment cannot be started.",
             )
-            swap_request.initiator_paystack_ref = reference
-        else:
-            swap_request.initiator_paystack_ref = f"NOPAY-{swap_request.id}"
+
+        reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
+        payment = self.paystack.initialize_transaction(
+            email=initiator.email,
+            amount_kobo=PaystackService.to_kobo(swap_request.initiator_fee_amount),
+            reference=reference,
+            metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+        )
+        swap_request.initiator_paystack_ref = reference
 
         self.db.commit()
         self.db.refresh(swap_request)
@@ -551,11 +574,16 @@ class SwapService:
             .order_by(SwapRequest.created_at.desc())
             .all()
         )
+        fee_updated = False
         for req in requests:
             try:
                 self._expire_if_needed(req)
             except HTTPException:
                 pass
+            if self._sync_unpaid_fee_from_settings(req):
+                fee_updated = True
+        if fee_updated:
+            self.db.commit()
         return requests
 
     def get_swap(self, user_id: str, swap_id: str) -> Swap:

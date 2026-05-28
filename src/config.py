@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     TRANSACTION_FEE_PERCENT: float = float(os.environ.get("TRANSACTION_FEE_PERCENT", "5"))
     # Flat fee in GHS for testing (default 1). Set to empty string to use TRANSACTION_FEE_PERCENT instead.
     TRANSACTION_FEE_FIXED_GHS: float | None = (
-        float(os.environ["TRANSACTION_FEE_FIXED_GHS"])
+        float(os.environ.get("TRANSACTION_FEE_FIXED_GHS", "1"))
         if os.environ.get("TRANSACTION_FEE_FIXED_GHS", "1").strip() != ""
         else None
     )
