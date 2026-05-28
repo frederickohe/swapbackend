@@ -11,6 +11,7 @@ from core.swap.dto.swap_dto import (
     NoShowRequest,
     PaymentConfirmRequest,
     SettleDifferenceRequest,
+    SwapMeetupDetailsResponse,
     SwapRequestResponse,
     SwapResponse,
 )
@@ -106,6 +107,18 @@ def get_request(
 ):
     req = SwapService(db).get_swap_request(user.id, swap_request_id)
     return SwapRequestResponse.from_swap_request(req)
+
+
+@swap_routes.get(
+    "/requests/{swap_request_id}/meetup-details",
+    response_model=SwapMeetupDetailsResponse,
+)
+def get_meetup_details(
+    swap_request_id: str,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    return SwapService(db).get_meetup_details(user.id, swap_request_id)
 
 
 @swap_routes.get("/{swap_id}", response_model=SwapResponse)

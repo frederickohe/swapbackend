@@ -190,10 +190,17 @@ class SwapService:
         )
         if owner and own_listing:
             owner_summary = self._listing_party_summary(owner, own_listing)
+            location_note = ""
+            if own_listing.location_lat is not None and own_listing.location_lng is not None:
+                location_note = (
+                    f" Item location: {own_listing.location_lat:.5f}, "
+                    f"{own_listing.location_lng:.5f}."
+                )
             self._notify(
                 swap_request.initiator_id,
-                "Owner details unlocked",
-                f"You can now view the owner's details: {owner_summary}",
+                "Receiver details unlocked",
+                f"You can now view the receiver's details in Swap Bay: "
+                f"{owner_summary}.{location_note}",
                 {"swap_request_id": swap_request.id, "party": "owner"},
             )
 
@@ -452,6 +459,76 @@ class SwapService:
             raise HTTPException(status_code=403, detail="Access denied")
         self._expire_if_needed(swap_request)
         return swap_request
+
+    def get_meetup_details(self, user_id: str, swap_request_id: str) -> dict:
+        swap_request = (
+            self.db.query(SwapRequest)
+            .options(
+                joinedload(SwapRequest.initiator),
+                joinedload(SwapRequest.owner),
+                joinedload(SwapRequest.initiator_listing),
+                joinedload(SwapRequest.owner_listing),
+                joinedload(SwapRequest.swap),
+                joinedload(SwapRequest.hub),
+            )
+            .filter(SwapRequest.id == swap_request_id)
+            .first()
+        )
+        if not swap_request:
+            raise HTTPException(status_code=404, detail="Swap request not found")
+        if user_id not in (swap_request.initiator_id, swap_request.owner_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        if swap_request.status != SwapRequestStatus.PENDING_HUB_MEETING.value:
+            raise HTTPException(
+                status_code=403,
+                detail="Meetup details are available after the transaction fee is paid",
+            )
+
+        is_initiator = user_id == swap_request.initiator_id
+        counterparty = (
+            swap_request.owner if is_initiator else swap_request.initiator
+        )
+        counterparty_listing = (
+            swap_request.owner_listing
+            if is_initiator
+            else swap_request.initiator_listing
+        )
+        your_listing = (
+            swap_request.initiator_listing
+            if is_initiator
+            else swap_request.owner_listing
+        )
+        if not counterparty or not counterparty_listing or not your_listing:
+            raise HTTPException(status_code=404, detail="Swap listing data not found")
+
+        hub = swap_request.hub
+        swap = swap_request.swap
+        maps_url = self.hub_service.maps_url(hub) if hub else None
+
+        return {
+            "swap_request_id": swap_request.id,
+            "swap_id": swap.id if swap else None,
+            "hub_name": hub.name if hub else None,
+            "hub_maps_url": maps_url,
+            "meeting_time": swap_request.meeting_time,
+            "counterparty": {
+                "fullname": (counterparty.fullname or "").strip() or None,
+                "phone": (counterparty.phone or "").strip() or None,
+                "email": (counterparty.email or "").strip() or None,
+            },
+            "counterparty_listing": {
+                "id": counterparty_listing.id,
+                "title": counterparty_listing.title,
+                "location_lat": counterparty_listing.location_lat,
+                "location_lng": counterparty_listing.location_lng,
+            },
+            "your_listing": {
+                "id": your_listing.id,
+                "title": your_listing.title,
+                "location_lat": your_listing.location_lat,
+                "location_lng": your_listing.location_lng,
+            },
+        }
 
     def list_user_swap_requests(self, user_id: str, role: str = "all") -> list:
         query = self.db.query(SwapRequest)

@@ -62,6 +62,7 @@ class SwapRequestResponse(BaseModel):
     cash_difference: float
     credit_to_add: float
     status: str
+    owner_approved: bool = False
     hub_id: Optional[str]
     meeting_time: Optional[datetime]
     expires_at: Optional[datetime]
@@ -71,6 +72,15 @@ class SwapRequestResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+    @staticmethod
+    def owner_approved(swap_request) -> bool:
+        ref = (swap_request.initiator_paystack_ref or "").strip()
+        if ref.startswith(("APPROVED-", "SWP-INIT-", "NOPAY-")):
+            return True
+        if swap_request.initiator_fee_paid or swap_request.hub_id:
+            return True
+        return False
 
     @staticmethod
     def effective_status(swap_request) -> str:
@@ -107,6 +117,7 @@ class SwapRequestResponse(BaseModel):
             cash_difference=swap_request.cash_difference,
             credit_to_add=swap_request.credit_to_add,
             status=cls.effective_status(swap_request),
+            owner_approved=cls.owner_approved(swap_request),
             hub_id=swap_request.hub_id,
             meeting_time=swap_request.meeting_time,
             expires_at=swap_request.expires_at,
@@ -118,6 +129,30 @@ class SwapRequestResponse(BaseModel):
                 ListingSummary.from_orm(owner_listing) if owner_listing else None
             ),
         )
+
+
+class SwapPartyDetails(BaseModel):
+    fullname: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
+class ListingLocationSummary(BaseModel):
+    id: str
+    title: str
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
+
+
+class SwapMeetupDetailsResponse(BaseModel):
+    swap_request_id: str
+    swap_id: Optional[str] = None
+    hub_name: Optional[str] = None
+    hub_maps_url: Optional[str] = None
+    meeting_time: Optional[datetime] = None
+    counterparty: SwapPartyDetails
+    counterparty_listing: ListingLocationSummary
+    your_listing: ListingLocationSummary
 
 
 class SwapResponse(BaseModel):
