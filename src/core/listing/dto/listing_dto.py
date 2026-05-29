@@ -57,6 +57,7 @@ class ListingCreateRequest(BaseModel):
     wishlist: List[WishlistItem] = []
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    location_area: Optional[str] = Field(None, max_length=200)
 
     @validator("category")
     def validate_category(cls, v):
@@ -83,6 +84,7 @@ class ListingUpdateRequest(BaseModel):
     wishlist: Optional[List[WishlistItem]] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    location_area: Optional[str] = Field(None, max_length=200)
 
     @validator("category")
     def validate_category(cls, v):

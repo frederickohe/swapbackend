@@ -20,10 +20,15 @@ class ListingService:
 
     @staticmethod
     def _resolve_location_area(data: dict) -> Optional[str]:
+        explicit = data.get("location_area")
+        if explicit is not None:
+            trimmed = str(explicit).strip()
+            if trimmed:
+                return trimmed
         lat = data.get("location_lat")
         lng = data.get("location_lng")
         if lat is None or lng is None:
-            return data.get("location_area")
+            return None
         return GeocodingService.reverse_geocode_area(float(lat), float(lng))
 
     def _expiry_date(self) -> datetime:
@@ -89,6 +94,7 @@ class ListingService:
             merged = {
                 "location_lat": data.get("location_lat", listing.location_lat),
                 "location_lng": data.get("location_lng", listing.location_lng),
+                "location_area": data.get("location_area"),
             }
             data["location_area"] = self._resolve_location_area(merged)
         for key, value in data.items():
