@@ -607,6 +607,7 @@ class SwapService:
         return {
             "swap_request_id": swap_request.id,
             "swap_id": swap.id if swap else None,
+            "swap_status": swap.status if swap else None,
             "hub_name": hub.name if hub else None,
             "hub_maps_url": maps_url,
             "meeting_time": swap_request.meeting_time,
@@ -628,6 +629,28 @@ class SwapService:
                 "location_lng": your_listing.location_lng,
             },
         }
+
+    def complete_swap_by_request(self, user_id: str, swap_request_id: str) -> Swap:
+        swap_request = self.get_swap_request(user_id, swap_request_id)
+        if swap_request.status != SwapRequestStatus.PENDING_HUB_MEETING.value:
+            raise HTTPException(status_code=400, detail="Swap is not ready to complete")
+        self._ensure_ready_after_payment(swap_request)
+        self.db.refresh(swap_request)
+        swap = swap_request.swap
+        if not swap:
+            raise HTTPException(status_code=400, detail="Swap meeting not set up yet")
+        if swap.status == SwapStatus.COMPLETED.value:
+            return swap
+        if not swap.difference_settled:
+            req = swap_request
+            if req.cash_difference <= 0:
+                swap.difference_settled = True
+                swap.difference_payment_method = "none"
+            else:
+                swap.difference_settled = True
+                swap.difference_payment_method = "cash"
+            self.db.commit()
+        return self.complete_swap(swap.id)
 
     def list_user_swap_requests(self, user_id: str, role: str = "all") -> list:
         query = self.db.query(SwapRequest)

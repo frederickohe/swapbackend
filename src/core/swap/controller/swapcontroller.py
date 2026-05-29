@@ -139,6 +139,21 @@ def get_meetup_details(
     return SwapService(db).get_meetup_details(user.id, swap_request_id)
 
 
+@swap_routes.post(
+    "/requests/{swap_request_id}/complete",
+    response_model=SwapResponse,
+)
+def complete_swap_request(
+    swap_request_id: str,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    swap = SwapService(db).complete_swap_by_request(user.id, swap_request_id)
+    resp = SwapResponse.from_orm(swap)
+    resp.maps_url = SwapService(db).maps_url_for_swap(swap)
+    return resp
+
+
 @swap_routes.get("/{swap_id}", response_model=SwapResponse)
 def get_swap(
     swap_id: str,

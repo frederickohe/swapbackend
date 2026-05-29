@@ -79,6 +79,7 @@ def my_listings(
 def search_listings(
     keyword: Optional[str] = None,
     category: Optional[str] = None,
+    location: Optional[str] = None,
     min_value: Optional[float] = None,
     max_value: Optional[float] = None,
     lat: Optional[float] = None,
@@ -93,6 +94,7 @@ def search_listings(
     result = service.search_listings(
         keyword=keyword,
         category=_normalize_search_category(category),
+        location=location,
         min_value=min_value,
         max_value=max_value,
         lat=lat,

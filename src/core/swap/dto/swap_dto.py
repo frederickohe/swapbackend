@@ -69,6 +69,8 @@ class SwapRequestResponse(BaseModel):
     created_at: datetime
     initiator_listing: Optional[ListingSummary] = None
     owner_listing: Optional[ListingSummary] = None
+    swap_id: Optional[str] = None
+    swap_status: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -137,6 +139,8 @@ class SwapRequestResponse(BaseModel):
             owner_listing=(
                 ListingSummary.from_orm(owner_listing) if owner_listing else None
             ),
+            swap_id=getattr(swap_request.swap, "id", None) if swap_request.swap else None,
+            swap_status=getattr(swap_request.swap, "status", None) if swap_request.swap else None,
         )
 
 
@@ -156,6 +160,7 @@ class ListingLocationSummary(BaseModel):
 class SwapMeetupDetailsResponse(BaseModel):
     swap_request_id: str
     swap_id: Optional[str] = None
+    swap_status: Optional[str] = None
     hub_name: Optional[str] = None
     hub_maps_url: Optional[str] = None
     meeting_time: Optional[datetime] = None

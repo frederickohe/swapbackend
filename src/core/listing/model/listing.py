@@ -29,6 +29,7 @@ class Listing(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ListingStatus.ACTIVE.value)
     location_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     location_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    location_area: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

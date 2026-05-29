@@ -10,12 +10,21 @@ from config import settings
 from core.listing.model.listing import Listing
 from core.shared.enums import ListingStatus
 from core.user.model.User import User
+from utilities.geocoding_service import GeocodingService
 from utilities.id_helper import generate_id
 
 
 class ListingService:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _resolve_location_area(data: dict) -> Optional[str]:
+        lat = data.get("location_lat")
+        lng = data.get("location_lng")
+        if lat is None or lng is None:
+            return data.get("location_area")
+        return GeocodingService.reverse_geocode_area(float(lat), float(lng))
 
     def _expiry_date(self) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=settings.LISTING_EXPIRY_DAYS)
@@ -29,6 +38,7 @@ class ListingService:
         images = data.get("image_urls") or []
         if len(images) > 5:
             raise HTTPException(status_code=400, detail="Maximum 5 images allowed")
+        location_area = self._resolve_location_area(data)
         listing = Listing(
             id=generate_id(),
             user_id=user_id,
@@ -46,6 +56,7 @@ class ListingService:
             status=ListingStatus.ACTIVE.value,
             location_lat=data.get("location_lat"),
             location_lng=data.get("location_lng"),
+            location_area=location_area,
             expires_at=self._expiry_date(),
         )
         self.db.add(listing)
@@ -74,6 +85,12 @@ class ListingService:
         if "image_urls" in data and data["image_urls"] is not None:
             if len(data["image_urls"]) > 5:
                 raise HTTPException(status_code=400, detail="Maximum 5 images allowed")
+        if "location_lat" in data or "location_lng" in data:
+            merged = {
+                "location_lat": data.get("location_lat", listing.location_lat),
+                "location_lng": data.get("location_lng", listing.location_lng),
+            }
+            data["location_area"] = self._resolve_location_area(merged)
         for key, value in data.items():
             if value is not None and hasattr(listing, key):
                 setattr(listing, key, value)
@@ -131,6 +148,7 @@ class ListingService:
         self,
         keyword: Optional[str] = None,
         category: Optional[str] = None,
+        location: Optional[str] = None,
         min_value: Optional[float] = None,
         max_value: Optional[float] = None,
         lat: Optional[float] = None,
@@ -153,6 +171,9 @@ class ListingService:
         if category:
             # Exact match — categories are a fixed set validated at create/search.
             query = query.filter(Listing.category == category)
+        if location:
+            pattern = f"%{location.strip()}%"
+            query = query.filter(Listing.location_area.ilike(pattern))
         if min_value is not None:
             query = query.filter(Listing.estimated_value >= min_value)
         if max_value is not None:

@@ -119,6 +119,7 @@ class ListingResponse(BaseModel):
     status: str
     location_lat: Optional[float]
     location_lng: Optional[float]
+    location_area: Optional[str] = None
     expires_at: datetime
     renewed_at: Optional[datetime]
     created_at: datetime
@@ -153,6 +154,7 @@ class ListingResponse(BaseModel):
             status=listing.status,
             location_lat=listing.location_lat,
             location_lng=listing.location_lng,
+            location_area=listing.location_area,
             expires_at=listing.expires_at,
             renewed_at=listing.renewed_at,
             created_at=listing.created_at,
@@ -171,6 +173,7 @@ class ListingSearchRequest(BaseModel):
         return _validate_item_category(v)
     min_value: Optional[float] = None
     max_value: Optional[float] = None
+    location: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
     radius_km: Optional[float] = None
