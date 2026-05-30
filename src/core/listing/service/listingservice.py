@@ -154,6 +154,7 @@ class ListingService:
         self,
         keyword: Optional[str] = None,
         category: Optional[str] = None,
+        condition: Optional[str] = None,
         location: Optional[str] = None,
         min_value: Optional[float] = None,
         max_value: Optional[float] = None,
@@ -177,6 +178,8 @@ class ListingService:
         if category:
             # Exact match — categories are a fixed set validated at create/search.
             query = query.filter(Listing.category == category)
+        if condition:
+            query = query.filter(Listing.condition == condition.strip())
         if location:
             pattern = f"%{location.strip()}%"
             query = query.filter(Listing.location_area.ilike(pattern))

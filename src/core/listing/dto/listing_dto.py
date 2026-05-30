@@ -167,12 +167,14 @@ class ListingResponse(BaseModel):
 class ListingSearchRequest(BaseModel):
     keyword: Optional[str] = None
     category: Optional[str] = None
+    condition: Optional[str] = None
 
     @validator("category")
     def validate_category(cls, v):
         if v is None:
             return None
         return _validate_item_category(v)
+
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     location: Optional[str] = None
