@@ -15,6 +15,12 @@ class PaymentConfirmRequest(BaseModel):
     reference: str
 
 
+class InitiateFeeRequest(BaseModel):
+    """Payment channel for initiator commitment fee."""
+    method: str = "web"  # web | ussd
+    channel: Optional[str] = None  # Moolre MoMo channel: 13=MTN, 6=Telecel, 7=AT
+
+
 class ApproveSwapRequest(BaseModel):
     swap_request_id: str
 
@@ -157,6 +163,13 @@ class ListingLocationSummary(BaseModel):
     location_lng: Optional[float] = None
 
 
+class HandoffUssdInfo(BaseModel):
+    ussd_dial_code: Optional[str] = None
+    handoff_confirmed: bool = False
+    both_confirmed: bool = False
+    pin_expires_at: Optional[datetime] = None
+
+
 class SwapMeetupDetailsResponse(BaseModel):
     swap_request_id: str
     swap_id: Optional[str] = None
@@ -167,6 +180,7 @@ class SwapMeetupDetailsResponse(BaseModel):
     counterparty: SwapPartyDetails
     counterparty_listing: ListingLocationSummary
     your_listing: ListingLocationSummary
+    handoff_ussd: Optional[HandoffUssdInfo] = None
 
 
 class SwapResponse(BaseModel):

@@ -9,6 +9,7 @@ from core.swap.dto.swap_dto import (
     AttendanceRequest,
     CreateSwapRequest,
     NoShowRequest,
+    InitiateFeeRequest,
     PaymentConfirmRequest,
     SettleDifferenceRequest,
     SwapMeetupDetailsResponse,
@@ -83,21 +84,32 @@ def cancel_request(
 def initialize_initiator_fee(
     swap_request_id: str,
     request: FastAPIRequest,
+    body: InitiateFeeRequest | None = None,
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """Start Paystack checkout for the initiator commitment fee (after owner approval)."""
+    """Start Moolre checkout or MoMo USSD for the initiator commitment fee."""
     request_base = str(request.base_url).rstrip("/")
+    fee_body = body or InitiateFeeRequest()
     result = SwapService(db).initialize_initiator_fee_payment(
-        user, swap_request_id, request_base=request_base
+        user,
+        swap_request_id,
+        request_base=request_base,
+        payment_method=fee_body.method,
+        momo_channel=fee_body.channel,
     )
     payment = dict(result["payment"] or {})
-    callback_url = settings.resolved_paystack_callback_url(request_base)
-    if callback_url:
-        payment["callback_url"] = callback_url
+    if fee_body.method == "web":
+        callback_url = settings.resolved_moolre_callback_url(request_base)
+        redirect_url = settings.resolved_moolre_redirect_url(request_base)
+        if callback_url:
+            payment["callback_url"] = callback_url
+        if redirect_url:
+            payment["redirect_url"] = redirect_url
     return {
         "swap_request": SwapRequestResponse.from_swap_request(result["swap_request"]),
         "payment": payment,
+        "provider": settings.PAYMENT_PROVIDER,
     }
 
 
@@ -213,6 +225,24 @@ def handle_no_show(
         swap_id, request.compensation_type, request.compensation_percent
     )
     return SwapResponse.from_orm(swap)
+
+
+@swap_routes.post("/webhooks/moolre")
+async def moolre_swap_webhook(request: FastAPIRequest, db=Depends(get_db)):
+    """Moolre payment webhook — alias route under swaps namespace."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"status": "invalid payload"}
+    status = payload.get("status")
+    data = payload.get("data") or {}
+    externalref = data.get("externalref") or data.get("reference") or ""
+    if status in (1, "1") and externalref and str(externalref).startswith("SWP-INIT-"):
+        try:
+            SwapService(db).confirm_initiator_fee(str(externalref))
+        except Exception:
+            pass
+    return {"status": "ok"}
 
 
 @swap_routes.post("/webhooks/paystack")

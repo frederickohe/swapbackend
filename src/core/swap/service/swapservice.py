@@ -14,6 +14,7 @@ from core.listing.service.listingservice import ListingService
 from core.notification.model.Notification import NotificationType
 from core.notification.service.notification_service import NotificationService
 from core.payment.model.transaction import Transaction
+from core.moolre.service.moolreservice import MoolrePaymentService
 from core.payment.service.paystackservice import PaystackService
 from core.shared.enums import (
     CreditReason,
@@ -36,6 +37,7 @@ class SwapService:
         self.hub_service = HubService(db)
         self.credit_service = CreditService(db)
         self.paystack = PaystackService()
+        self.moolre = MoolrePaymentService()
         self.notifications = NotificationService(db)
 
     def _fee_amount(self, value_a: float, value_b: float) -> float:
@@ -105,6 +107,27 @@ class SwapService:
     def _paystack_available(self) -> bool:
         return bool(settings.PAYSTACK_SECRET_KEY)
 
+    def _moolre_available(self) -> bool:
+        return bool(settings.MOOLRE_API_USER and settings.MOOLRE_ACCOUNT_NUMBER)
+
+    def _payment_available(self) -> bool:
+        provider = (settings.PAYMENT_PROVIDER or "moolre").lower()
+        if provider == "paystack":
+            return self._paystack_available()
+        return self._moolre_available()
+
+    def _verify_payment(self, reference: str) -> dict:
+        provider = (settings.PAYMENT_PROVIDER or "moolre").lower()
+        if provider == "paystack":
+            verified = self.paystack.verify_transaction(reference)
+            if verified.get("status") != "success":
+                raise HTTPException(status_code=400, detail="Payment not successful")
+            return verified
+        verified = self.moolre.verify_payment(reference)
+        if verified.get("status") != "success":
+            raise HTTPException(status_code=400, detail="Payment not successful or still pending")
+        return verified
+
     def _listing_party_summary(self, user: User, listing: Listing) -> str:
         parts: list[str] = []
         title = (listing.title or "").strip()
@@ -168,6 +191,9 @@ class SwapService:
             "Someone wants to swap for your listing. Review and approve or reject.",
             {"swap_request_id": swap_request.id},
         )
+        from core.ussd.service.ussdservice import UssdService
+
+        UssdService(self.db).notify_swap_request_ussd(swap_request)
 
         return {
             "swap_request": swap_request,
@@ -177,7 +203,7 @@ class SwapService:
         }
 
     def confirm_initiator_fee(self, reference: str) -> SwapRequest:
-        verified = self.paystack.verify_transaction(reference)
+        verified = self._verify_payment(reference)
         if verified.get("status") != "success":
             raise HTTPException(status_code=400, detail="Payment not successful")
         swap_request = (
@@ -384,7 +410,13 @@ class SwapService:
         return swap_request
 
     def initialize_initiator_fee_payment(
-        self, initiator: User, swap_request_id: str, *, request_base: str | None = None
+        self,
+        initiator: User,
+        swap_request_id: str,
+        *,
+        request_base: str | None = None,
+        payment_method: str = "web",
+        momo_channel: str | None = None,
     ) -> dict:
         swap_request = (
             self.db.query(SwapRequest)
@@ -405,21 +437,51 @@ class SwapService:
 
         self._sync_unpaid_fee_from_settings(swap_request)
 
-        if not self._paystack_available():
+        if not self._payment_available():
             raise HTTPException(
                 status_code=503,
-                detail="Paystack is not configured on the server. Payment cannot be started.",
+                detail="Payment provider is not configured. Payment cannot be started.",
             )
 
         reference = f"SWP-INIT-{swap_request.id}-{generate_id(8)}"
-        callback_url = settings.resolved_paystack_callback_url(request_base)
-        payment = self.paystack.initialize_transaction(
-            email=initiator.email,
-            amount_kobo=PaystackService.to_kobo(swap_request.initiator_fee_amount),
-            reference=reference,
-            metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
-            callback_url=callback_url,
-        )
+        provider = (settings.PAYMENT_PROVIDER or "moolre").lower()
+        method = (payment_method or "web").lower()
+
+        if provider == "paystack" and method != "ussd":
+            callback_url = settings.resolved_paystack_callback_url(request_base)
+            payment = self.paystack.initialize_transaction(
+                email=initiator.email,
+                amount_kobo=PaystackService.to_kobo(swap_request.initiator_fee_amount),
+                reference=reference,
+                metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+                callback_url=callback_url,
+            )
+        elif method == "ussd":
+            channel = momo_channel or MoolrePaymentService.detect_momo_channel(
+                initiator.phone or ""
+            )
+            payment = self.moolre.initiate_ussd_payment(
+                payer_phone=initiator.phone or "",
+                amount=swap_request.initiator_fee_amount,
+                externalref=reference,
+                channel=channel,
+            )
+            payment["ussd_dial_code"] = self.moolre.build_merchant_ussd_dial_code(
+                swap_request.initiator_fee_amount, reference
+            )
+            payment["channel"] = channel
+        else:
+            callback_url = settings.resolved_moolre_callback_url(request_base)
+            redirect_url = settings.resolved_moolre_redirect_url(request_base)
+            payment = self.moolre.generate_payment_link(
+                amount=swap_request.initiator_fee_amount,
+                email=initiator.email,
+                externalref=reference,
+                callback_url=callback_url,
+                redirect_url=redirect_url,
+                metadata={"swap_request_id": swap_request.id, "type": "initiator_fee"},
+            )
+
         swap_request.initiator_paystack_ref = reference
 
         self.db.commit()
@@ -485,6 +547,9 @@ class SwapService:
         self.db.add(swap)
         self.db.commit()
         self.db.refresh(swap_request)
+        from core.ussd.service.ussdservice import UssdService
+
+        UssdService(self.db).issue_handoff_pins(swap)
 
         for uid in (swap_request.initiator_id, swap_request.owner_id):
             self._notify(
@@ -604,6 +669,30 @@ class SwapService:
         elif hub:
             maps_url = self.hub_service.maps_url(hub)
 
+        handoff_ussd = None
+        if swap:
+            pin = (
+                swap.initiator_handoff_pin
+                if is_initiator
+                else swap.owner_handoff_pin
+            )
+            confirmed = bool(
+                swap.initiator_handoff_confirmed_at
+                if is_initiator
+                else swap.owner_handoff_confirmed_at
+            )
+            dial_code = None
+            if pin and swap.id:
+                dial_code = self.moolre.build_swap_ussd_code(swap.id, pin)
+            handoff_ussd = {
+                "ussd_dial_code": dial_code,
+                "handoff_confirmed": confirmed,
+                "both_confirmed": bool(
+                    swap.initiator_handoff_confirmed_at and swap.owner_handoff_confirmed_at
+                ),
+                "pin_expires_at": swap.handoff_pin_expires_at,
+            }
+
         return {
             "swap_request_id": swap_request.id,
             "swap_id": swap.id if swap else None,
@@ -628,6 +717,7 @@ class SwapService:
                 "location_lat": your_listing.location_lat,
                 "location_lng": your_listing.location_lng,
             },
+            "handoff_ussd": handoff_ussd,
         }
 
     def complete_swap_by_request(self, user_id: str, swap_request_id: str) -> Swap:
@@ -641,6 +731,13 @@ class SwapService:
             raise HTTPException(status_code=400, detail="Swap meeting not set up yet")
         if swap.status == SwapStatus.COMPLETED.value:
             return swap
+        if swap.initiator_handoff_pin and not (
+            swap.initiator_handoff_confirmed_at and swap.owner_handoff_confirmed_at
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Both parties must confirm handoff via USSD before completing",
+            )
         if not swap.difference_settled:
             req = swap_request
             if req.cash_difference <= 0:

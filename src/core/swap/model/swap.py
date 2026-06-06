@@ -23,6 +23,17 @@ class Swap(Base):
     owner_attended: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     difference_settled: Mapped[bool] = mapped_column(Boolean, default=False)
     difference_payment_method: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    initiator_handoff_pin: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
+    owner_handoff_pin: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
+    initiator_handoff_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    owner_handoff_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    handoff_pin_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 

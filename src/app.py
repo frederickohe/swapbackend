@@ -21,6 +21,8 @@ from core.swap.controller.swapcontroller import swap_routes
 from core.credit.controller.creditcontroller import credit_routes
 from core.admin.controller.admincontroller import admin_routes
 from core.paystack.controller.paystack_controller import paystack_routes
+from core.moolre.controller.moolre_controller import moolre_routes
+from core.ussd.controller.ussdcontroller import ussd_routes
 
 from utilities.dbconfig import Base, engine
 from config import settings
@@ -74,7 +76,7 @@ app = FastAPI(
 
     - Authentication & user profiles
     - Listings, search, wishlist matching
-    - Swap requests, Paystack fees, hub scheduling
+    - Swap requests, Moolre fees, USSD actions, hub scheduling
     - Credit wallet & transactions
     - Admin dashboard & hub management
     - Notifications (in-app + SMS)
@@ -124,6 +126,8 @@ app.include_router(swap_routes, prefix="/api/v1/swaps", tags=["Swaps"])
 app.include_router(credit_routes, prefix="/api/v1/credit", tags=["Credit Wallet"])
 app.include_router(admin_routes, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(paystack_routes, prefix="/api/v1/paystack", tags=["Paystack"])
+app.include_router(moolre_routes, prefix="/api/v1/moolre", tags=["Moolre"])
+app.include_router(ussd_routes, prefix="/api/v1/ussd", tags=["USSD"])
 
 
 # JWT Authentication Settings
