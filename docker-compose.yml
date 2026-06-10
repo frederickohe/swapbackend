@@ -10,6 +10,8 @@ services:
     # Backend/pgAdmin reach this service as `db:5432` on the compose network.
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - swappro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U swapproadmin -d swappro"]
       interval: 5s
@@ -26,7 +28,9 @@ services:
       REDIS_PASSWORD: swappro098
     volumes:
       - redis_data:/data
-  
+    networks:
+      - swappro
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: swappro_pgadmin
@@ -42,6 +46,9 @@ services:
         condition: service_healthy
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - swappro
+      - caddy
 
   backend:
     build:
@@ -132,6 +139,17 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "3090:3090"
+    networks:
+      - swappro
+      - caddy
+
+networks:
+  swappro:
+    name: swappro-network
+    driver: bridge
+  caddy:
+    external: true
+    name: caddy
 
 volumes:
   redis_data:
