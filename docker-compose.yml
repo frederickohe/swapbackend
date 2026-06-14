@@ -1,7 +1,7 @@
 # Swappro backend stack.
 # Requires external Docker network "swappro" — create with:
 #   cd ../swapprocaddy && ./setup-networks.sh
-# pgAdmin and API must join "swappro" so Caddy can reach them.
+# All services join "swappro" so Caddy can reach API/pgAdmin and they can reach db/redis.
 
 services:
   db:
@@ -15,6 +15,8 @@ services:
     # Backend/pgAdmin reach this service as `db:5432` on the compose network.
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - swappro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U swapproadmin -d swappro"]
       interval: 5s
@@ -31,7 +33,9 @@ services:
       REDIS_PASSWORD: swappro098
     volumes:
       - redis_data:/data
-  
+    networks:
+      - swappro
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: swappro_pgadmin
@@ -48,7 +52,6 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:
-      - default
       - swappro
 
   backend:
@@ -141,7 +144,6 @@ services:
     ports:
       - "3090:3090"
     networks:
-      - default
       - swappro
 
 volumes:
