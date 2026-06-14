@@ -184,19 +184,4 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 
 - [List of contributors or resources]
 
-# Handle department lookup if provided
-department_id = None
-if request.department:
-    department = self.db.query(Department).filter(
-        Department.name == request.department
-    ).first()
-    if department:
-        department_id = department.id
-
-db_user = User(
-    ...
-    department_id=department_id,  # Pass the foreign key ID
-    ...
-)
-
 (Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& c:\Users\dezyn\OneDrive\Documents\GitHub\Logiciel\swappro\swappro_backend\.venv\Scripts\Activate.ps1)

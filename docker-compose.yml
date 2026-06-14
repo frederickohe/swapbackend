@@ -130,7 +130,7 @@ services:
       CONTABO_ACCESS_KEY: ${CONTABO_ACCESS_KEY:-e59e33a21a72b214bfc6aeb3e2fcd711}
       CONTABO_SECRET_KEY: ${CONTABO_SECRET_KEY:-939a59165a7490c08e78311d26182118}
       CONTABO_BUCKET: ${CONTABO_BUCKET:-swappro}
-      CONTABO_ENDPOINT: ${CONTABO_ENDPOINT:-https://usc1.contabostorage.com}
+      CONTABO_ENDPOINT: ${CONTABO_ENDPOINT:-https://eu2.contabostorage.com}
 
       # Flat swap transaction fee in GHS for testing (default 1). Set to "" to use TRANSACTION_FEE_PERCENT.
       TRANSACTION_FEE_FIXED_GHS: ${TRANSACTION_FEE_FIXED_GHS:-1}

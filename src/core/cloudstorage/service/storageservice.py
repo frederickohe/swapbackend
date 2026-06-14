@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from enum import Enum
 from typing import Optional, Union
 import boto3
+from botocore.client import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class StorageService:
     def __init__(self):
         self.access_key = os.getenv("CONTABO_ACCESS_KEY")
         self.secret_key = os.getenv("CONTABO_SECRET_KEY")
-        self.endpoint = os.getenv("CONTABO_ENDPOINT", "https://usc1.contabostorage.com")
+        self.endpoint = os.getenv("CONTABO_ENDPOINT", "https://eu2.contabostorage.com")
         self.bucket = os.getenv("CONTABO_BUCKET")
 
         if not self.access_key or not self.secret_key or not self.bucket:
@@ -40,13 +41,14 @@ class StorageService:
                 "CONTABO_ACCESS_KEY, CONTABO_SECRET_KEY, and CONTABO_BUCKET"
             )
 
-        # Initialize S3 client with Contabo endpoint
+        # Initialize S3 client with Contabo endpoint (path-style buckets required)
         self.s3_client = boto3.client(
             "s3",
             endpoint_url=self.endpoint,
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
-            region_name="us-east-1"  # Required but not used by Contabo
+            region_name="us-east-1",  # Required but not used by Contabo
+            config=Config(s3={"addressing_style": "path"}),
         )
 
         # Ensure bucket exists (create if not). If it already exists, ignore the error.
