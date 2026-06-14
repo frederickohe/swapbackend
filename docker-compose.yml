@@ -120,6 +120,7 @@ services:
       
       # Frontend and Other URLs
       BASE_FRONTEND_URL: ${BASE_FRONTEND_URL:-https://www.swappro.store}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.swappro.store}
       
       # OTP Configuration
       OTP_EXPIRE_MINUTES: ${OTP_EXPIRE_MINUTES:-5}

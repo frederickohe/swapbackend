@@ -114,6 +114,16 @@ app.add_exception_handler(RequestValidationError, exceptions.validation_exceptio
 
 # Routes Registration
 
+@app.get("/", include_in_schema=False)
+def api_root():
+    return {
+        "message": "Swap Pro API",
+        "docs": "/docs",
+        "api_base": "/api/v1",
+        "example": "/api/v1/listings/categories",
+    }
+
+
 app.include_router(base_routes, prefix="/api/v1", tags=["Base Routes"])
 app.include_router(storage_routes, prefix="/api/v1/storage", tags=["Storage Routes"])
 app.include_router(auth_routes, prefix="/api/v1/auth", tags=["Auth Routes"])
