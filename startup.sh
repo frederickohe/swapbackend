@@ -37,29 +37,52 @@ done
 # Ensure Alembic migrations folder exists
 mkdir -p alembic/versions
 
-# Count checked-in Alembic revision scripts (*.py), ignoring .gitkeep
-REVISION_COUNT=$(find alembic/versions -maxdepth 1 -name '*.py' 2>/dev/null | wc -l | tr -d ' ')
-if [ "${REVISION_COUNT}" = "0" ]; then
-	echo "ERROR: No Alembic revision files found in alembic/versions/*.py"
-	echo "Refusing to run migrations — restore the migration chain from git before deploying."
-	exit 1
-fi
+count_revisions() {
+	find alembic/versions -maxdepth 1 -name '*.py' 2>/dev/null | wc -l | tr -d ' '
+}
 
-# Autogenerate migrations only when AUTO_MIGRATE=true
-if [ "${AUTO_MIGRATE}" = "true" ]; then
-	# Create an autogenerate revision for any model changes, then delete it if empty
+remove_noop_revision() {
+	local latest_file="$1"
+	if [ -n "$latest_file" ] && ! grep -q "op\." "$latest_file"; then
+		echo "No DB-op changes detected in $latest_file — removing no-op revision"
+		rm -f "$latest_file"
+		return 1
+	fi
+	if [ -n "$latest_file" ]; then
+		echo "Autogenerate created $latest_file with changes"
+	fi
+	return 0
+}
+
+REVISION_COUNT=$(count_revisions)
+
+if [ "${REVISION_COUNT}" = "0" ]; then
+	if [ "${AUTO_MIGRATE}" = "true" ]; then
+		echo "No Alembic revisions found — AUTO_MIGRATE=true, bootstrapping initial migration from models"
+		python -m alembic revision --autogenerate -m "initial $(date -u +%Y%m%d%H%M%S)" || {
+			echo "ERROR: Failed to create initial autogenerate revision"
+			exit 1
+		}
+		LATEST_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -n1)
+		if ! remove_noop_revision "$LATEST_FILE"; then
+			echo "ERROR: Initial autogenerate produced no schema changes — check model imports in alembic/env.py"
+			exit 1
+		fi
+		REVISION_COUNT=$(count_revisions)
+		if [ "${REVISION_COUNT}" = "0" ]; then
+			echo "ERROR: Bootstrap did not leave any revision files in alembic/versions/*.py"
+			exit 1
+		fi
+	else
+		echo "ERROR: No Alembic revision files found in alembic/versions/*.py"
+		echo "Refusing to run migrations — set AUTO_MIGRATE=true to bootstrap from models, or provide revision files."
+		exit 1
+	fi
+elif [ "${AUTO_MIGRATE}" = "true" ]; then
 	echo "AUTO_MIGRATE=true — checking for model changes and creating autogenerate revision if needed"
 	python -m alembic revision --autogenerate -m "autogen $(date -u +%Y%m%d%H%M%S)" || true
-	# Inspect the most recent revision file created
 	LATEST_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -n1)
-	if [ -n "$LATEST_FILE" ]; then
-		if ! grep -q "op\." "$LATEST_FILE"; then
-			echo "No DB-op changes detected in $LATEST_FILE — removing no-op revision"
-			rm -f "$LATEST_FILE"
-		else
-			echo "Autogenerate created $LATEST_FILE with changes"
-		fi
-	fi
+	remove_noop_revision "$LATEST_FILE" || true
 else
 	echo "AUTO_MIGRATE not set to 'true' — skipping autogenerate step"
 fi
