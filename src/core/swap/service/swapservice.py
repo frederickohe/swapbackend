@@ -547,9 +547,10 @@ class SwapService:
         self.db.add(swap)
         self.db.commit()
         self.db.refresh(swap_request)
-        from core.ussd.service.ussdservice import UssdService
+        if settings.REQUIRE_USSD_HANDOFF:
+            from core.ussd.service.ussdservice import UssdService
 
-        UssdService(self.db).issue_handoff_pins(swap)
+            UssdService(self.db).issue_handoff_pins(swap)
 
         for uid in (swap_request.initiator_id, swap_request.owner_id):
             self._notify(
@@ -670,7 +671,7 @@ class SwapService:
             maps_url = self.hub_service.maps_url(hub)
 
         handoff_ussd = None
-        if swap:
+        if swap and settings.REQUIRE_USSD_HANDOFF:
             pin = (
                 swap.initiator_handoff_pin
                 if is_initiator
@@ -731,7 +732,7 @@ class SwapService:
             raise HTTPException(status_code=400, detail="Swap meeting not set up yet")
         if swap.status == SwapStatus.COMPLETED.value:
             return swap
-        if swap.initiator_handoff_pin and not (
+        if settings.REQUIRE_USSD_HANDOFF and swap.initiator_handoff_pin and not (
             swap.initiator_handoff_confirmed_at and swap.owner_handoff_confirmed_at
         ):
             raise HTTPException(

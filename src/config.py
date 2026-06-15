@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     MOOLRE_CALLBACK_URL: str = os.environ.get('MOOLRE_CALLBACK_URL', '')
     MOOLRE_MERCHANT_CODE: str = os.environ.get('MOOLRE_MERCHANT_CODE', '')
     MOOLRE_USSD_SHORT_CODE: str = os.environ.get('MOOLRE_USSD_SHORT_CODE', '*920*48#')
+    # When true, both parties must confirm property handoff via USSD before completing a swap.
+    REQUIRE_USSD_HANDOFF: bool = (
+        os.environ.get('REQUIRE_USSD_HANDOFF', 'false').lower() == 'true'
+    )
     MOOLRE_DEFAULT_CHANNEL: str = os.environ.get('MOOLRE_DEFAULT_CHANNEL', '13')
     # Payment provider: moolre (default) or paystack (legacy)
     PAYMENT_PROVIDER: str = os.environ.get('PAYMENT_PROVIDER', 'moolre')

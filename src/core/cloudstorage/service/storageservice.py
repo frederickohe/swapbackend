@@ -1,4 +1,5 @@
 import os
+import io
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from enum import Enum
@@ -6,6 +7,8 @@ from typing import Optional, Union
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
+
+from core.cloudstorage.service.image_compressor import compress_image_for_upload
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +125,20 @@ class StorageService:
         # Make sure we start reading from beginning
         try:
             file_obj.seek(0)
+            upload_bytes = file_obj.read()
         except Exception:
-            pass
+            upload_bytes = b""
+
+        compressed = compress_image_for_upload(
+            io.BytesIO(upload_bytes),
+            file_name,
+            content_type,
+        )
+        if compressed is not None:
+            file_obj, file_name, content_type = compressed
+        else:
+            file_obj = io.BytesIO(upload_bytes)
+            file_obj.seek(0)
 
         # Define upload function to run in thread
         def _upload():
