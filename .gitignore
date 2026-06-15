@@ -212,6 +212,5 @@ __marimo__/
 
 src/tempCodeRunnerFil.py
 
-# Alembic migrations (ignore generated revisions)
-alembic/versions/*
-!alembic/versions/.gitkeep
+# macOS
+.DS_Store

@@ -37,25 +37,27 @@ done
 # Ensure Alembic migrations folder exists
 mkdir -p alembic/versions
 
+# Count checked-in Alembic revision scripts (*.py), ignoring .gitkeep
+REVISION_COUNT=$(find alembic/versions -maxdepth 1 -name '*.py' 2>/dev/null | wc -l | tr -d ' ')
+if [ "${REVISION_COUNT}" = "0" ]; then
+	echo "ERROR: No Alembic revision files found in alembic/versions/*.py"
+	echo "Refusing to run migrations — restore the migration chain from git before deploying."
+	exit 1
+fi
+
 # Autogenerate migrations only when AUTO_MIGRATE=true
 if [ "${AUTO_MIGRATE}" = "true" ]; then
-	# If there are no revision files in alembic/versions, create an initial autogenerate
-	if [ -z "$(ls -A alembic/versions 2>/dev/null)" ]; then
-		echo "No Alembic revisions found — creating initial revision"
-		python -m alembic revision --autogenerate -m "initial" || true
-	else
-		# Create an autogenerate revision for any model changes, then delete it if empty
-		echo "AUTO_MIGRATE=true — checking for model changes and creating autogenerate revision if needed"
-		python -m alembic revision --autogenerate -m "autogen $(date -u +%Y%m%d%H%M%S)" || true
-		# Inspect the most recent file created
-		LATEST_FILE=$(ls -t alembic/versions | head -n1)
-		if [ -n "$LATEST_FILE" ]; then
-			if ! grep -q "op\." "alembic/versions/$LATEST_FILE"; then
-				echo "No DB-op changes detected in $LATEST_FILE — removing no-op revision"
-				rm -f "alembic/versions/$LATEST_FILE"
-			else
-				echo "Autogenerate created $LATEST_FILE with changes"
-			fi
+	# Create an autogenerate revision for any model changes, then delete it if empty
+	echo "AUTO_MIGRATE=true — checking for model changes and creating autogenerate revision if needed"
+	python -m alembic revision --autogenerate -m "autogen $(date -u +%Y%m%d%H%M%S)" || true
+	# Inspect the most recent revision file created
+	LATEST_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -n1)
+	if [ -n "$LATEST_FILE" ]; then
+		if ! grep -q "op\." "$LATEST_FILE"; then
+			echo "No DB-op changes detected in $LATEST_FILE — removing no-op revision"
+			rm -f "$LATEST_FILE"
+		else
+			echo "Autogenerate created $LATEST_FILE with changes"
 		fi
 	fi
 else
