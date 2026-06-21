@@ -317,24 +317,7 @@ class SwapService:
             raise HTTPException(status_code=400, detail="Request is not awaiting approval")
         self._expire_if_needed(swap_request)
 
-        initiator = (
-            self.db.query(User).filter(User.id == swap_request.initiator_id).first()
-        )
-        init_listing = (
-            self.db.query(Listing)
-            .filter(Listing.id == swap_request.initiator_listing_id)
-            .first()
-        )
-        if initiator and init_listing:
-            initiator_summary = self._listing_party_summary(initiator, init_listing)
-            self._notify(
-                swap_request.owner_id,
-                "Initiator details available",
-                f"The initiator's details: {initiator_summary}",
-                {"swap_request_id": swap_request.id, "party": "initiator"},
-            )
-
-        # Owner approval only updates status — Paystack runs when the initiator pays.
+        # Owner approval only updates status — counterparty details are sent after payment.
         swap_request.status = SwapRequestStatus.PENDING_INITIATOR_FEE.value
         swap_request.initiator_paystack_ref = f"APPROVED-{swap_request.id}"
 
