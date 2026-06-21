@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi_jwt_auth import AuthJWT
 from fastapi_jwt_auth.exceptions import MissingTokenError
 import jwt
@@ -9,6 +9,7 @@ from core.auth.dto.request.user_create import UserCreateRequest
 from core.auth.dto.request.userlogin import UserLoginRequest
 from core.auth.dto.request.resetpassword import ResetPasswordRequest
 from core.auth.dto.request.resetpassnoauth import ResetPassNoAuth
+from core.auth.dto.request.verify_account import VerifyAccountRequest
 from core.auth.dto.request.otp_verify import OTPVerifyRequest
 from core.auth.service.authservice import AuthService
 from core.exceptions.AuthException import InvalidCredentialsError
@@ -77,11 +78,11 @@ def signout(authjwt: AuthJWT = Depends(validate_token), db: Session = Depends(ge
 
 @auth_routes.post("/verify-account")
 async def verify_account(
-    email: str = Form(...),
-    db: Session = Depends(get_db)
+    request: VerifyAccountRequest,
+    db: Session = Depends(get_db),
 ):
     auth_service = AuthService(db)
-    return auth_service.verify_account(email)
+    return auth_service.verify_account(email=request.email, phone=request.phone)
 
 
 @auth_routes.post("/reset-password")

@@ -327,23 +327,43 @@ class AuthService:
                 detail="Invalid token"
             )
     
-    def verify_account(self, email: str):
-        """Verify user account using email or username"""
+    def verify_account(self, email: str = None, phone: str = None):
+        """Verify user account exists using email or phone."""
         try:
-            db_user = self.db.query(User).filter(User.email == email).first()
+            db_user = None
+            if email:
+                db_user = self.db.query(User).filter(User.email == email).first()
+            elif phone:
+                normalized_phone = normalize_phone(phone)
+                if not normalized_phone:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Phone number is required",
+                    )
+                db_user = self.db.query(User).filter(User.phone == normalized_phone).first()
 
             if not db_user:
-                raise InvalidCredentialsError()
-            
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No account found with that email or phone number",
+                )
+
             return JSONResponse(
                 status_code=200,
-                content={"message": "Account verified successfully"}
+                content={
+                    "message": "Account verified successfully",
+                    "email": db_user.email,
+                    "phone": db_user.phone or "",
+                },
             )
-            
-        except jwt.ExpiredSignatureError:
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Account verification error: {str(e)}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email not valid or expired"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Account verification failed",
             )
             
     def reset_password(self, request: BaseModel):
