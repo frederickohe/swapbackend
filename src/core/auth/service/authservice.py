@@ -276,13 +276,15 @@ class AuthService:
     def refresh_tokens(self, refresh_token: str):
         """Refresh access token using refresh token"""
         try:
-            new_access_token = self.session_driver.refresh_access_token(refresh_token)
-            
+            new_access_token, new_refresh_token = (
+                self.session_driver.refresh_access_token(refresh_token)
+            )
+
             return JSONResponse(
                 status_code=200,
                 content={
                     "access_token": new_access_token,
-                    "refresh_token": refresh_token,
+                    "refresh_token": new_refresh_token,
                     "token_type": "bearer",
                     "expires_in": self.session_driver.ACCESS_TOKEN_EXPIRE_MINUTES * 60
                 }

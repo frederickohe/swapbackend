@@ -37,7 +37,7 @@ class SessionDriver:
         self.SECRET_KEY = getattr(settings, 'SECRET_KEY', "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7")
         self.ALGORITHM = getattr(settings, 'ALGORITHM', "HS256")
         self.ACCESS_TOKEN_EXPIRE_MINUTES = getattr(settings, 'ACCESS_TOKEN_EXPIRE_MINUTES', 35)
-        self.REFRESH_TOKEN_EXPIRE_DAYS = getattr(settings, 'REFRESH_TOKEN_EXPIRE_DAYS', 90)
+        self.REFRESH_TOKEN_EXPIRE_DAYS = getattr(settings, 'REFRESH_TOKEN_EXPIRE_DAYS', 3650)
         
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -76,11 +76,13 @@ class SessionDriver:
             }
             
             # Store in Redis with expiration set to refresh token's expiration
-            self.redis_client.set(
-                f"user:{email}:tokens",
-                json.dumps(token_data),
-                ex=int((datetime.fromtimestamp(refresh_payload["exp"]) - datetime.now()).total_seconds())
-            )
+            ttl = int(refresh_payload["exp"] - datetime.utcnow().timestamp())
+            if ttl > 0:
+                self.redis_client.set(
+                    f"user:{email}:tokens",
+                    json.dumps(token_data),
+                    ex=ttl,
+                )
             
         except jwt.PyJWTError as e:
             logger.error(f"Error storing tokens: {str(e)}")
@@ -92,12 +94,67 @@ class SessionDriver:
     def remove_tokens(self, email: str):
         """Remove tokens for a user from Redis"""
         try:
+            token_data = self.redis_client.get(f"user:{email}:tokens")
+            if token_data:
+                try:
+                    parsed = json.loads(token_data)
+                    refresh_token = parsed.get("refresh_token")
+                    if refresh_token:
+                        self.blacklist_token(refresh_token)
+                except Exception:
+                    pass
             self.redis_client.delete(f"user:{email}:tokens")
         except Exception as e:
             logger.error(f"Error removing token: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Could not remove token"
+            )
+
+    def refresh_access_token(self, refresh_token: str):
+        """Generate new access/refresh tokens using a valid refresh token.
+
+        Accepts a cryptographically valid refresh JWT even when Redis has no
+        stored session (e.g. after a Redis restart). Rotates the refresh token
+        on each use so active users keep a sliding, long-lived session.
+        """
+        try:
+            if self.redis_client.sismember("blacklisted_tokens", refresh_token):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid refresh token",
+                )
+
+            payload = jwt.decode(
+                refresh_token, self.SECRET_KEY, algorithms=[self.ALGORITHM]
+            )
+            email = payload.get("sub")
+            if email is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid refresh token",
+                )
+
+            new_access_token = self.create_access_token(
+                data={"sub": email},
+                expires_delta=timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES),
+            )
+            new_refresh_token = self.create_refresh_token(data={"sub": email})
+            self.store_tokens(new_access_token, new_refresh_token)
+
+            return new_access_token, new_refresh_token
+
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token expired",
+            )
+        except HTTPException:
+            raise
+        except jwt.PyJWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
             )
 
     def validate_token(self, token: str):
@@ -133,59 +190,6 @@ class SessionDriver:
             )
         except jwt.PyJWTError:
             raise credentials_exception
-
-    def refresh_access_token(self, refresh_token: str):
-        """Generate new access token using refresh token"""
-        try:
-            payload = jwt.decode(refresh_token, self.SECRET_KEY, algorithms=[self.ALGORITHM])
-            email = payload.get("sub")
-            if email is None:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid refresh token"
-                )
-            
-            # Get stored tokens from Redis
-            token_data = self.redis_client.get(f"user:{email}:tokens")
-            if not token_data:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="No tokens found for user"
-                )
-            
-            token_data = json.loads(token_data)
-            
-            # Verify refresh token matches stored one
-            if token_data["refresh_token"] != refresh_token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Refresh token mismatch"
-                )
-            
-            # Create new access token
-            new_access_token = self.create_access_token(
-                data={"sub": email},
-                expires_delta=timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)
-            )
-            
-            # Update stored access token in Redis
-            token_data["access_token"] = new_access_token
-            token_data["access_exp"] = (datetime.now() + timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)).timestamp()
-            
-            # Update Redis with new token data
-            self.redis_client.set(
-                f"user:{email}:tokens",
-                json.dumps(token_data),
-                ex=int((datetime.fromtimestamp(token_data["refresh_exp"]) - datetime.now()).total_seconds())
-            )
-            
-            return new_access_token
-            
-        except jwt.PyJWTError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
-            )
 
     def blacklist_token(self, token: str):
         """Add token to blacklist set in Redis"""

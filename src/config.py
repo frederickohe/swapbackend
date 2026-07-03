@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     KID: str = os.environ.get('KID')
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 360
-    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.environ.get('REFRESH_TOKEN_EXPIRE_DAYS', 90))
+    # Long-lived refresh tokens; each successful refresh rotates and extends the session.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.environ.get('REFRESH_TOKEN_EXPIRE_DAYS', 3650))
     REDIS_HOST: str = os.environ.get('REDIS_HOST')
     REDIS_PORT: str = os.environ.get('REDIS_PORT')
     REDIS_PASSWORD: str = os.environ.get('REDIS_PASSWORD')
