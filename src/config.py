@@ -130,6 +130,12 @@ class Settings(BaseSettings):
         if not base:
             return None
         return f"{base}/api/v1/moolre/return"
+
+    def resolved_ussd_callback_url(self, request_base: str | None = None) -> str | None:
+        base = (self.PUBLIC_API_BASE_URL or request_base or "").strip().rstrip("/")
+        if not base:
+            return None
+        return f"{base}/api/v1/ussd/callback"
     TRANSACTION_FEE_PERCENT: float = float(os.environ.get("TRANSACTION_FEE_PERCENT", "5"))
     # Flat fee in GHS for testing (default 1). Set to empty string to use TRANSACTION_FEE_PERCENT instead.
     TRANSACTION_FEE_FIXED_GHS: float | None = (

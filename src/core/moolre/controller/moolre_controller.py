@@ -46,6 +46,7 @@ def get_moolre_config(
         "currency": settings.DEFAULT_CURRENCY,
         "callback_url": settings.resolved_moolre_callback_url(request_base),
         "redirect_url": settings.resolved_moolre_redirect_url(request_base),
+        "ussd_callback_url": settings.resolved_ussd_callback_url(request_base),
         "ussd_short_code": settings.MOOLRE_USSD_SHORT_CODE,
         "supports_ussd": True,
         "supports_web": True,

@@ -1,10 +1,28 @@
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import PlainTextResponse
 
+from config import settings
 from core.ussd.service.ussdservice import UssdService
 from utilities.deps import get_db
 
 ussd_routes = APIRouter()
+
+
+@ussd_routes.get("/config")
+def get_ussd_config(request: Request):
+    """Public USSD wiring info for Moolre dashboard / Startup Cup setup."""
+    request_base = str(request.base_url).rstrip("/")
+    return {
+        "ussd_callback_url": settings.resolved_ussd_callback_url(request_base),
+        "ussd_short_code": settings.MOOLRE_USSD_SHORT_CODE,
+        "menu": [
+            "1. Received — incoming swap requests",
+            "2. Sent — swaps you initiated",
+            "3. Ready — scheduled hub meetups",
+            "4. History — completed swaps",
+            "5. Payment — last commitment fee",
+        ],
+    }
 
 
 def _extract_ussd_input(

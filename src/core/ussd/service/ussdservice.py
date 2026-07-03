@@ -23,6 +23,8 @@ class UssdService:
     """Handle Moolre USSD callbacks for swap actions and status menus."""
 
     HANDOFF_WINDOW_MINUTES = 30
+    MAX_LIST_ITEMS = 3
+    USSD_MAX_CHARS = 182
 
     def __init__(self, db: Session):
         self.db = db
@@ -32,6 +34,49 @@ class UssdService:
     @staticmethod
     def _normalize_phone(phone: str) -> str:
         return MoolreSMSService._normalize_phone(phone)
+
+    @staticmethod
+    def _status_label(req: SwapRequest, user: User) -> str:
+        swap = req.swap
+        if swap and swap.status == SwapStatus.COMPLETED.value:
+            return "Done"
+        status = req.status
+        if status == SwapRequestStatus.PENDING_OWNER_APPROVAL.value:
+            return "New" if user.id == req.owner_id else "Awaiting"
+        labels = {
+            SwapRequestStatus.PENDING_INITIATOR_FEE.value: "Pay fee",
+            SwapRequestStatus.PENDING_OWNER_FEE.value: "Owner fee",
+            SwapRequestStatus.PENDING_HUB_MEETING.value: "Ready",
+            SwapRequestStatus.REJECTED.value: "Declined",
+            SwapRequestStatus.EXPIRED.value: "Expired",
+            SwapRequestStatus.CANCELLED.value: "Cancelled",
+        }
+        return labels.get(status, status[:10])
+
+    @staticmethod
+    def _other_listing(req: SwapRequest, user: User) -> Optional[Listing]:
+        if user.id == req.initiator_id:
+            return req.owner_listing
+        if user.id == req.owner_id:
+            return req.initiator_listing
+        return None
+
+    def _format_swap_line(self, req: SwapRequest, user: User) -> str:
+        listing = self._other_listing(req)
+        title = (listing.title if listing else "Item")[:14]
+        label = self._status_label(req, user)
+        return f"{req.id[:6]} {label} {title}"
+
+    def _end_list(self, header: str, lines: list[str], empty: str) -> str:
+        if not lines:
+            return f"END {empty}"
+        body = "\n".join([f"END {header}"] + lines[: self.MAX_LIST_ITEMS])
+        if len(body) > self.USSD_MAX_CHARS:
+            trimmed = lines[:2]
+            body = "\n".join([f"END {header}"] + trimmed)
+            if len(body) > self.USSD_MAX_CHARS:
+                body = f"END {header}\n{trimmed[0]}" if trimmed else f"END {empty}"
+        return body
 
     def _user_by_phone(self, phone: str) -> Optional[User]:
         normalized = self._normalize_phone(phone)
@@ -58,9 +103,9 @@ class UssdService:
 
         parts = [p.strip() for p in (text or "").split("*") if p.strip()]
         if not parts:
-            return self._main_menu(user)
+            return self._main_menu()
 
-        if len(parts) == 1 and parts[0] in ("1", "2", "3"):
+        if len(parts) == 1 and parts[0] in ("1", "2", "3", "4", "5"):
             return self._main_menu_action(user, parts[0])
 
         if len(parts) == 1 and re.fullmatch(r"\d{4,20}", parts[0]):
@@ -76,61 +121,95 @@ class UssdService:
             settings.MOOLRE_USSD_SHORT_CODE
         )
 
-    def _main_menu(self, user: User) -> str:
+    def _main_menu(self) -> str:
         return (
             "CON Swap Pro\n"
-            "1. Pending requests\n"
-            "2. Ready swaps\n"
-            "3. Last payment"
+            "1. Received\n"
+            "2. Sent\n"
+            "3. Ready\n"
+            "4. History\n"
+            "5. Payment"
         )
 
     def _main_menu_action(self, user: User, choice: str) -> str:
+        listing_opts = (
+            joinedload(SwapRequest.initiator_listing),
+            joinedload(SwapRequest.owner_listing),
+            joinedload(SwapRequest.swap),
+        )
+
         if choice == "1":
-            pending = (
+            received = (
                 self.db.query(SwapRequest)
+                .options(*listing_opts)
                 .filter(
                     SwapRequest.owner_id == user.id,
                     SwapRequest.status == SwapRequestStatus.PENDING_OWNER_APPROVAL.value,
                 )
                 .order_by(SwapRequest.created_at.desc())
-                .limit(3)
+                .limit(self.MAX_LIST_ITEMS)
                 .all()
             )
-            if not pending:
-                return "END No pending swap requests."
-            lines = ["END Pending:"]
-            for req in pending:
-                listing = req.initiator_listing
-                title = (listing.title if listing else "Item")[:24]
-                lines.append(f"{req.id[:6]} {title}")
-            return "\n".join(lines)
+            lines = [self._format_swap_line(req, user) for req in received]
+            return self._end_list("Received:", lines, "No received swap requests.")
 
         if choice == "2":
+            sent = (
+                self.db.query(SwapRequest)
+                .options(*listing_opts)
+                .filter(
+                    SwapRequest.initiator_id == user.id,
+                    SwapRequest.status.in_(
+                        [
+                            SwapRequestStatus.PENDING_OWNER_APPROVAL.value,
+                            SwapRequestStatus.PENDING_INITIATOR_FEE.value,
+                            SwapRequestStatus.PENDING_OWNER_FEE.value,
+                        ]
+                    ),
+                )
+                .order_by(SwapRequest.created_at.desc())
+                .limit(self.MAX_LIST_ITEMS)
+                .all()
+            )
+            lines = [self._format_swap_line(req, user) for req in sent]
+            return self._end_list("Sent:", lines, "No active sent swaps.")
+
+        if choice == "3":
             ready = (
                 self.db.query(SwapRequest)
-                .options(joinedload(SwapRequest.swap))
+                .options(*listing_opts)
                 .filter(
                     (SwapRequest.initiator_id == user.id) | (SwapRequest.owner_id == user.id),
                     SwapRequest.status == SwapRequestStatus.PENDING_HUB_MEETING.value,
                     SwapRequest.initiator_fee_paid.is_(True),
                 )
                 .order_by(SwapRequest.created_at.desc())
-                .limit(3)
+                .limit(self.MAX_LIST_ITEMS)
                 .all()
             )
-            if not ready:
-                return "END No ready swaps."
-            lines = ["END Ready swaps:"]
+            lines = []
             for req in ready:
                 swap_id = req.swap.id[:6] if req.swap else req.id[:6]
-                listing = (
-                    req.owner_listing
-                    if user.id == req.initiator_id
-                    else req.initiator_listing
+                listing = self._other_listing(req)
+                title = (listing.title if listing else "Item")[:14]
+                lines.append(f"{swap_id} Ready {title}")
+            return self._end_list("Ready:", lines, "No ready swaps.")
+
+        if choice == "4":
+            history = (
+                self.db.query(SwapRequest)
+                .options(*listing_opts)
+                .join(Swap, Swap.swap_request_id == SwapRequest.id)
+                .filter(
+                    (SwapRequest.initiator_id == user.id) | (SwapRequest.owner_id == user.id),
+                    Swap.status == SwapStatus.COMPLETED.value,
                 )
-                title = (listing.title if listing else "Item")[:20]
-                lines.append(f"{swap_id} {title}")
-            return "\n".join(lines)
+                .order_by(Swap.updated_at.desc())
+                .limit(self.MAX_LIST_ITEMS)
+                .all()
+            )
+            lines = [self._format_swap_line(req, user) for req in history]
+            return self._end_list("History:", lines, "No completed swaps yet.")
 
         last_tx = (
             self.db.query(SwapRequest)
@@ -143,8 +222,13 @@ class UssdService:
         )
         if not last_tx:
             return "END No payments found."
-        ref = (last_tx.initiator_paystack_ref or "")[:16]
-        return f"END Last fee paid: GH₵{last_tx.initiator_fee_amount:.2f} ref {ref}"
+        ref = (last_tx.initiator_paystack_ref or "paid")[:16]
+        status = self._status_label(last_tx, user)
+        return (
+            f"END Last fee: GH₵{last_tx.initiator_fee_amount:.2f}\n"
+            f"Status: {status}\n"
+            f"Ref: {ref}"
+        )
 
     def _listing_inquiry(self, listing_id: str) -> str:
         listing = self.db.query(Listing).filter(Listing.id == listing_id).first()
