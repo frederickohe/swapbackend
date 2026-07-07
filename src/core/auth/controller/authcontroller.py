@@ -11,6 +11,7 @@ from core.auth.dto.request.resetpassword import ResetPasswordRequest
 from core.auth.dto.request.resetpassnoauth import ResetPassNoAuth
 from core.auth.dto.request.verify_account import VerifyAccountRequest
 from core.auth.dto.request.otp_verify import OTPVerifyRequest
+from core.auth.dto.request.refresh_token import RefreshTokenRequest
 from core.auth.service.authservice import AuthService
 from core.exceptions.AuthException import InvalidCredentialsError
 from core.exceptions.UserException import UserAlreadyExistsError
@@ -74,6 +75,12 @@ def signout(authjwt: AuthJWT = Depends(validate_token), db: Session = Depends(ge
     auth_service = AuthService(db)
 
     return auth_service.signout(token)
+
+
+@auth_routes.post("/refresh")
+def refresh_tokens(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+    auth_service = AuthService(db)
+    return auth_service.refresh_tokens(request.refresh_token)
 
 
 @auth_routes.post("/verify-account")
