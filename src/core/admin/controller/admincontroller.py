@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, Query
 from core.admin.dto.admin_dto import (
     AdminCreateRequest,
     AdminCreateResponse,
+    AdminListingsResponse,
+    AdminMatchSwapRequest,
     AdminResolveSwapRequest,
     MetricsResponse,
 )
 from core.admin.service.adminservice import AdminService
 from core.credit.dto.credit_dto import AdminCreditOverrideRequest, CreditTransactionResponse
-from core.swap.dto.swap_dto import SwapResponse
+from core.swap.dto.swap_dto import SwapRequestResponse, SwapResponse
 from utilities.deps import get_db, require_admin, require_admin_creator
 
 admin_routes = APIRouter()
@@ -34,6 +36,54 @@ def create_admin_user(
 @admin_routes.get("/metrics", response_model=MetricsResponse)
 def metrics(db=Depends(get_db), _=Depends(require_admin)):
     return AdminService(db).get_metrics()
+
+
+@admin_routes.get("/listings", response_model=AdminListingsResponse)
+def admin_listings(
+    wish_finding: Optional[bool] = Query(None),
+    budget_negotiation: Optional[bool] = Query(None),
+    collection_assistance: Optional[bool] = Query(None),
+    status: Optional[str] = Query("ACTIVE"),
+    keyword: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    db=Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Listings for admin matching — includes owner contact for outreach."""
+    return AdminService(db).list_addon_listings(
+        wish_finding=wish_finding,
+        budget_negotiation=budget_negotiation,
+        collection_assistance=collection_assistance,
+        status=status,
+        keyword=keyword,
+        page=page,
+        size=size,
+    )
+
+
+@admin_routes.post("/swaps/match")
+def admin_match_swap(
+    request: AdminMatchSwapRequest,
+    db=Depends(get_db),
+    _=Depends(require_admin),
+):
+    """
+    Match two active listings and create an accepted swap awaiting initiator payment.
+    Appears in both users' Swap Bay as an approved swap ready for fee payment.
+    """
+    result = AdminService(db).create_admin_match(
+        request.initiator_listing_id,
+        request.owner_listing_id,
+    )
+    swap_request = result["swap_request"]
+    return {
+        "message": "Swap match created. Awaiting initiator payment in Swap Bay.",
+        "swap_request": SwapRequestResponse.from_swap_request(swap_request),
+        "initiator_fee_amount": result.get("initiator_fee_amount"),
+        "owner_fee_amount": result.get("owner_fee_amount"),
+        "difference_summary": result.get("difference_summary"),
+    }
 
 
 @admin_routes.get("/upcoming-swaps")

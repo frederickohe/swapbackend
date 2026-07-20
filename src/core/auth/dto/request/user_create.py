@@ -19,7 +19,6 @@ class UserCreateRequest(BaseModel):
     ghana_card: Optional[str] = None
     
     # Membership Information
-    company: Optional[str] = None
     current_branch: Optional[str] = None
     staff_id: Optional[str] = None
     

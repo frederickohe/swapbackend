@@ -136,6 +136,10 @@ services:
 
       # Flat swap transaction fee in GHS for testing (default 1). Set to "" to use TRANSACTION_FEE_PERCENT.
       TRANSACTION_FEE_FIXED_GHS: ${TRANSACTION_FEE_FIXED_GHS:-1}
+      # Listing add-on fees (GHS) added to each party's transaction fee.
+      ADDON_WISH_FINDING_GHS: ${ADDON_WISH_FINDING_GHS:-5}
+      ADDON_BUDGET_NEGOTIATION_GHS: ${ADDON_BUDGET_NEGOTIATION_GHS:-5}
+      ADDON_COLLECTION_ASSISTANCE_GHS: ${ADDON_COLLECTION_ASSISTANCE_GHS:-10}
 
     depends_on:
       - db

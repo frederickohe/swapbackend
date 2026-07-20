@@ -40,12 +40,34 @@ class SwapService:
         self.moolre = MoolrePaymentService()
         self.notifications = NotificationService(db)
 
-    def _fee_amount(self, value_a: float, value_b: float) -> float:
+    def _base_fee_amount(self, value_a: float, value_b: float) -> float:
         fixed = settings.TRANSACTION_FEE_FIXED_GHS
         if fixed is not None:
             return round(fixed, 2)
         higher = max(value_a, value_b)
         return round(higher * (settings.TRANSACTION_FEE_PERCENT / 100), 2)
+
+    def _listing_addon_fee(self, listing: Listing) -> float:
+        total = 0.0
+        if getattr(listing, "wish_finding", False):
+            total += settings.ADDON_WISH_FINDING_GHS
+        if getattr(listing, "budget_negotiation", False):
+            total += settings.ADDON_BUDGET_NEGOTIATION_GHS
+        if getattr(listing, "collection_assistance", False):
+            total += settings.ADDON_COLLECTION_ASSISTANCE_GHS
+        return round(total, 2)
+
+    def _party_fee_amount(
+        self, value_a: float, value_b: float, listing: Listing
+    ) -> float:
+        return round(
+            self._base_fee_amount(value_a, value_b) + self._listing_addon_fee(listing),
+            2,
+        )
+
+    def _fee_amount(self, value_a: float, value_b: float) -> float:
+        """Base transaction fee only (no listing add-ons)."""
+        return self._base_fee_amount(value_a, value_b)
 
     def _sync_unpaid_fee_from_settings(self, swap_request: SwapRequest) -> bool:
         """Align stored fees with current config for swaps awaiting initiator payment."""
@@ -57,17 +79,17 @@ class SwapService:
         own_listing = swap_request.owner_listing
         if not init_listing or not own_listing:
             return False
-        fee = self._fee_amount(
-            float(init_listing.estimated_value or 0),
-            float(own_listing.estimated_value or 0),
-        )
+        value_a = float(init_listing.estimated_value or 0)
+        value_b = float(own_listing.estimated_value or 0)
+        initiator_fee = self._party_fee_amount(value_a, value_b, init_listing)
+        owner_fee = self._party_fee_amount(value_a, value_b, own_listing)
         if (
-            swap_request.initiator_fee_amount == fee
-            and swap_request.owner_fee_amount == fee
+            swap_request.initiator_fee_amount == initiator_fee
+            and swap_request.owner_fee_amount == owner_fee
         ):
             return False
-        swap_request.initiator_fee_amount = fee
-        swap_request.owner_fee_amount = fee
+        swap_request.initiator_fee_amount = initiator_fee
+        swap_request.owner_fee_amount = owner_fee
         return True
 
     def _calculate_difference(self, initiator_value: float, owner_value: float) -> dict:
@@ -162,7 +184,10 @@ class SwapService:
         diff = self._calculate_difference(
             initiator_listing.estimated_value, owner_listing.estimated_value
         )
-        fee = self._fee_amount(initiator_listing.estimated_value, owner_listing.estimated_value)
+        value_a = float(initiator_listing.estimated_value)
+        value_b = float(owner_listing.estimated_value)
+        initiator_fee = self._party_fee_amount(value_a, value_b, initiator_listing)
+        owner_fee = self._party_fee_amount(value_a, value_b, owner_listing)
 
         swap_request = SwapRequest(
             id=generate_id(),
@@ -170,8 +195,8 @@ class SwapService:
             owner_id=owner_listing.user_id,
             initiator_listing_id=initiator_listing_id,
             owner_listing_id=owner_listing_id,
-            initiator_fee_amount=fee,
-            owner_fee_amount=fee,
+            initiator_fee_amount=initiator_fee,
+            owner_fee_amount=owner_fee,
             difference_value=diff["difference_value"],
             initiator_value_higher=diff["initiator_value_higher"],
             cash_difference=diff["cash_difference"],
@@ -198,7 +223,87 @@ class SwapService:
         return {
             "swap_request": swap_request,
             "payment": None,
-            "fee_amount": fee,
+            "fee_amount": initiator_fee,
+            "difference_summary": diff,
+        }
+
+    def create_admin_matched_swap(
+        self,
+        initiator_listing_id: str,
+        owner_listing_id: str,
+    ) -> dict:
+        """
+        Admin match: both listings must be ACTIVE and owned by different users.
+        Creates a SwapRequest already in PENDING_INITIATOR_FEE (accepted) so both
+        users see it in Swap Bay awaiting commitment fee payment.
+        """
+        if initiator_listing_id == owner_listing_id:
+            raise HTTPException(
+                status_code=400, detail="Cannot match a listing with itself"
+            )
+
+        initiator_listing = self.listing_service.get_listing(initiator_listing_id)
+        owner_listing = self.listing_service.get_listing(owner_listing_id)
+
+        if initiator_listing.status != ListingStatus.ACTIVE.value:
+            raise HTTPException(
+                status_code=400, detail="Initiator listing is not active"
+            )
+        if owner_listing.status != ListingStatus.ACTIVE.value:
+            raise HTTPException(status_code=400, detail="Owner listing is not active")
+        if initiator_listing.user_id == owner_listing.user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Both listings must belong to different users",
+            )
+
+        diff = self._calculate_difference(
+            initiator_listing.estimated_value, owner_listing.estimated_value
+        )
+        value_a = float(initiator_listing.estimated_value)
+        value_b = float(owner_listing.estimated_value)
+        initiator_fee = self._party_fee_amount(value_a, value_b, initiator_listing)
+        owner_fee = self._party_fee_amount(value_a, value_b, owner_listing)
+
+        swap_request = SwapRequest(
+            id=generate_id(),
+            initiator_id=initiator_listing.user_id,
+            owner_id=owner_listing.user_id,
+            initiator_listing_id=initiator_listing_id,
+            owner_listing_id=owner_listing_id,
+            initiator_fee_amount=initiator_fee,
+            owner_fee_amount=owner_fee,
+            difference_value=diff["difference_value"],
+            initiator_value_higher=diff["initiator_value_higher"],
+            cash_difference=diff["cash_difference"],
+            credit_to_add=diff["credit_to_add"],
+            status=SwapRequestStatus.PENDING_INITIATOR_FEE.value,
+        )
+        swap_request.initiator_paystack_ref = f"APPROVED-{swap_request.id}"
+        swap_request.expires_at = datetime.now(timezone.utc) + timedelta(
+            hours=settings.SWAP_REQUEST_EXPIRY_HOURS
+        )
+        self.db.add(swap_request)
+        self.db.commit()
+        self.db.refresh(swap_request)
+
+        self._notify(
+            swap_request.initiator_id,
+            "Swap matched — payment required",
+            "SwapPro matched your listing. Pay your commitment fee in Swap Bay to continue.",
+            {"swap_request_id": swap_request.id, "payment_required": True, "admin_match": True},
+        )
+        self._notify(
+            swap_request.owner_id,
+            "Swap matched by SwapPro",
+            "Your listing was matched by SwapPro. Waiting for the other party to pay their commitment fee.",
+            {"swap_request_id": swap_request.id, "admin_match": True},
+        )
+
+        return {
+            "swap_request": swap_request,
+            "initiator_fee_amount": initiator_fee,
+            "owner_fee_amount": owner_fee,
             "difference_summary": diff,
         }
 

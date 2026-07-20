@@ -86,7 +86,6 @@ class AuthService:
             gender=getattr(request, "gender", None),
             address=getattr(request, "address", None),
             
-            company=getattr(request, "company", None),
             current_branch=getattr(request, "current_branch", None),
             staff_id=getattr(request, "staff_id", None),
             

@@ -147,6 +147,14 @@ class Settings(BaseSettings):
         if os.environ.get("TRANSACTION_FEE_FIXED_GHS", "1").strip() != ""
         else None
     )
+    # Listing add-on service fees (GHS), added to each party's transaction fee.
+    ADDON_WISH_FINDING_GHS: float = float(os.environ.get("ADDON_WISH_FINDING_GHS", "5"))
+    ADDON_BUDGET_NEGOTIATION_GHS: float = float(
+        os.environ.get("ADDON_BUDGET_NEGOTIATION_GHS", "5")
+    )
+    ADDON_COLLECTION_ASSISTANCE_GHS: float = float(
+        os.environ.get("ADDON_COLLECTION_ASSISTANCE_GHS", "10")
+    )
     REFUND_PROCESSING_FEE_PERCENT: float = float(os.environ.get("REFUND_PROCESSING_FEE_PERCENT", "1"))
     SWAP_REQUEST_EXPIRY_HOURS: int = int(os.environ.get("SWAP_REQUEST_EXPIRY_HOURS", "72"))
     LISTING_EXPIRY_DAYS: int = int(os.environ.get("LISTING_EXPIRY_DAYS", "30"))

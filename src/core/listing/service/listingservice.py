@@ -58,6 +58,10 @@ class ListingService:
             ownership_documents_available=data.get("ownership_documents_available", False),
             estimated_value=data["estimated_value"],
             wishlist=data.get("wishlist") or [],
+            wish_finding=bool(data.get("wish_finding", False)),
+            budget_negotiation=bool(data.get("budget_negotiation", False)),
+            budget_amount=data.get("budget_amount"),
+            collection_assistance=bool(data.get("collection_assistance", False)),
             status=ListingStatus.ACTIVE.value,
             location_lat=data.get("location_lat"),
             location_lng=data.get("location_lng"),
@@ -98,7 +102,10 @@ class ListingService:
             }
             data["location_area"] = self._resolve_location_area(merged)
         for key, value in data.items():
-            if value is not None and hasattr(listing, key):
+            if not hasattr(listing, key):
+                continue
+            # Allow clearing budget_amount when budget negotiation is turned off.
+            if value is not None or key == "budget_amount":
                 setattr(listing, key, value)
         listing.updated_at = datetime.now(timezone.utc)
         self.db.commit()

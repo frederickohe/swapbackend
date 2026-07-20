@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, root_validator, validator
 
 from core.listing.listing_categories import (
     format_allowed_incoming_categories,
@@ -58,6 +58,10 @@ class ListingCreateRequest(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     location_area: Optional[str] = Field(None, max_length=200)
+    wish_finding: bool = False
+    budget_negotiation: bool = False
+    budget_amount: Optional[float] = Field(None, gt=0)
+    collection_assistance: bool = False
 
     @validator("category")
     def validate_category(cls, v):
@@ -68,6 +72,16 @@ class ListingCreateRequest(BaseModel):
         if len(v) > 5:
             raise ValueError("Maximum 5 images")
         return v
+
+    @root_validator
+    def validate_budget_negotiation(cls, values):
+        if values.get("budget_negotiation") and not values.get("budget_amount"):
+            raise ValueError(
+                "budget_amount is required when budget_negotiation is enabled"
+            )
+        if not values.get("budget_negotiation"):
+            values["budget_amount"] = None
+        return values
 
 
 class ListingUpdateRequest(BaseModel):
@@ -85,12 +99,26 @@ class ListingUpdateRequest(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     location_area: Optional[str] = Field(None, max_length=200)
+    wish_finding: Optional[bool] = None
+    budget_negotiation: Optional[bool] = None
+    budget_amount: Optional[float] = Field(None, gt=0)
+    collection_assistance: Optional[bool] = None
 
     @validator("category")
     def validate_category(cls, v):
         if v is None:
             return None
         return _validate_item_category(v)
+
+    @root_validator
+    def validate_budget_negotiation(cls, values):
+        if values.get("budget_negotiation") is True and not values.get("budget_amount"):
+            raise ValueError(
+                "budget_amount is required when budget_negotiation is enabled"
+            )
+        if values.get("budget_negotiation") is False:
+            values["budget_amount"] = None
+        return values
 
 
 class ListingCategoriesResponse(BaseModel):
@@ -118,6 +146,10 @@ class ListingResponse(BaseModel):
     ownership_documents_available: bool
     estimated_value: float
     wishlist: List[Dict[str, Any]]
+    wish_finding: bool = False
+    budget_negotiation: bool = False
+    budget_amount: Optional[float] = None
+    collection_assistance: bool = False
     status: str
     location_lat: Optional[float]
     location_lng: Optional[float]
@@ -153,6 +185,12 @@ class ListingResponse(BaseModel):
             ownership_documents_available=listing.ownership_documents_available,
             estimated_value=listing.estimated_value,
             wishlist=listing.wishlist or [],
+            wish_finding=bool(getattr(listing, "wish_finding", False)),
+            budget_negotiation=bool(getattr(listing, "budget_negotiation", False)),
+            budget_amount=getattr(listing, "budget_amount", None),
+            collection_assistance=bool(
+                getattr(listing, "collection_assistance", False)
+            ),
             status=listing.status,
             location_lat=listing.location_lat,
             location_lng=listing.location_lng,
