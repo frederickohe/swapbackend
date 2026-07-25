@@ -11,7 +11,7 @@ class AdminCreateRequest(BaseModel):
     email: str
     password: str = Field(..., min_length=PASSWORD_MIN_LENGTH)
     phone: Optional[str] = None
-    role: UserRole = UserRole.ADMIN
+    role: UserRole = UserRole.USER
 
 
 class AdminCreateResponse(BaseModel):

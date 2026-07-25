@@ -25,9 +25,10 @@ def create_admin_user(
     creator=Depends(require_admin_creator),
 ):
     """
-    Create an admin or official account.
+    Create a user account (USER, ADMIN, or OFFICIAL).
 
     - First admin: send `X-Admin-Setup-Secret` header (must match `ADMIN_SETUP_SECRET` in `.env`).
+      Bootstrap always creates ADMIN regardless of requested role.
     - After that: sign in as an existing admin/official and send the JWT as usual.
     """
     return AdminService(db).create_admin(request, creator)

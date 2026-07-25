@@ -334,8 +334,7 @@ def delete_user(user_id: str, authjwt: AuthJWT = Depends(validate_token), db: Se
     user_service = UserService(db)
     return user_service.delete_user(user_id)
 
-@user_routes.put("/{user_id}/role/{role_id}", response_model=MessageResponse)
-def update_user_role(user_id: str, role_id: str, authjwt: AuthJWT = Depends(validate_token), db: Session = Depends(get_db)):
-    # Add admin check here if needed
+@user_routes.put("/{user_id}/role/{role}", response_model=MessageResponse)
+def update_user_role(user_id: str, role: str, authjwt: AuthJWT = Depends(validate_token), db: Session = Depends(get_db)):
     user_service = UserService(db)
-    return user_service.update_user_role(user_id, role_id)
+    return user_service.update_user_role(user_id, role)

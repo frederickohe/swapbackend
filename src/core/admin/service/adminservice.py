@@ -26,18 +26,19 @@ class AdminService:
 
     def create_admin(self, request, creator: User | None) -> dict:
         if creator is None:
+            # Bootstrap path (setup secret): always create the first ADMIN.
             role = UserRole.ADMIN.value
         else:
-            if request.role not in (UserRole.ADMIN, UserRole.OFFICIAL):
+            if request.role not in (UserRole.USER, UserRole.ADMIN, UserRole.OFFICIAL):
                 raise HTTPException(
                     status_code=400,
-                    detail="role must be ADMIN or OFFICIAL",
+                    detail="role must be USER, ADMIN, or OFFICIAL",
                 )
             role = request.role.value
 
         result = AuthService(self.db).create_user(request, role=role)
         return {
-            "message": "Admin account created successfully",
+            "message": "User account created successfully",
             "user_id": result["user_id"],
             "email": request.email,
             "role": role,

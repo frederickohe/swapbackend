@@ -167,10 +167,10 @@ class UserService:
         return MessageResponse(message="User deleted successfully")
 
     def get_all_users_paged(self, page: int, size: int):
-        query = self.db.query(User)
+        query = self.db.query(User).order_by(User.created_at.desc())
         total = query.count()
         users = query.offset((page - 1) * size).limit(size).all()
-        
+
         return {
             "total": total,
             "page": page,
@@ -184,27 +184,71 @@ class UserService:
                     enabled=user.enabled,
                     status=user.status,
                     created_at=user.created_at,
-                    updated_at=user.updated_at  
-                ) for user in users
-            ]
+                    updated_at=user.updated_at,
+                    role=getattr(user, "role", "USER"),
+                    credit_balance=getattr(user, "credit_balance", 0.0),
+                    strikes=getattr(user, "strikes", 0),
+                )
+                for user in users
+            ],
         }
 
-    def update_user(self, email: str, payload: UserUpdateRequest) -> UserResponse:
-            # log the update attempt
-            logger.debug(f"Updating user {email} with data: {payload.model_dump(exclude_unset=True)}")
-            user = self.db.query(User).filter(User.email == email).first()
+    def update_user(self, user_id: str, payload: UserUpdateRequest) -> UserResponse:
+            # Controllers pass user id; also accept email for backwards compatibility.
+            logger.debug(f"Updating user {user_id} with data: {payload.model_dump(exclude_unset=True)}")
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if not user:
+                user = self.db.query(User).filter(User.email == user_id).first()
             if not user:
                 raise HTTPException(status_code=404, detail="User not found")
 
             data = payload.model_dump(exclude_unset=True)
+            password = data.pop("password", None)
+            if "role" in data and isinstance(data["role"], str):
+                from core.shared.enums import UserRole
+
+                role_value = data["role"].upper()
+                allowed = {r.value for r in UserRole}
+                if role_value not in allowed:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid role. Allowed: {', '.join(sorted(allowed))}",
+                    )
+                data["role"] = role_value
+
             for key, value in data.items():
                 if hasattr(user, key):
                     setattr(user, key, value)
+
+            if password:
+                from core.auth.service.authservice import AuthService
+
+                user.hashed_password = AuthService(self.db).hash_password(password)
 
             user.updated_at = datetime.utcnow()
             self.db.commit()
             self.db.refresh(user)
             return self.get_user_by_id(user.id)
+
+    def update_user_role(self, user_id: str, role: str) -> MessageResponse:
+        from core.shared.enums import UserRole
+
+        allowed = {r.value for r in UserRole}
+        role_value = role.upper()
+        if role_value not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid role. Allowed: {', '.join(sorted(allowed))}",
+            )
+
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user.role = role_value
+        user.updated_at = datetime.utcnow()
+        self.db.commit()
+        return MessageResponse(message=f"User role updated to {role_value}")
 
     def update_current_user(self, email: str, payload: UserUpdateRequest) -> UserResponse:
             user = self.db.query(User).filter(User.email == email).first()

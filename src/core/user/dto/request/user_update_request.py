@@ -1,6 +1,8 @@
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from core.auth.dto.request.password_policy import PASSWORD_MIN_LENGTH
 
 
 class UserUpdateRequest(BaseModel):
@@ -8,6 +10,10 @@ class UserUpdateRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     profile_picture_url: Optional[str] = None
+    role: Optional[str] = None
+    enabled: Optional[bool] = None
+    status: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=PASSWORD_MIN_LENGTH)
 
     # Personal Information
     nationality: Optional[str] = None
