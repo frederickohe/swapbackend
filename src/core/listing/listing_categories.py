@@ -1,18 +1,15 @@
 """
-Listing categories aligned with swap-pro add-belonging UI (add_belonging.dart).
+Listing categories aligned with swap-pro dashboard / add-belonging UI.
 
 Item categories are used on listing.category; incoming categories may appear in wishlist items.
 """
 
 from typing import FrozenSet, List, Tuple
 
-# Rows mirror Figma layout in AddBelongingPage._itemCategoryRows (order preserved for API clients).
+# Rows mirror AddBelongingPage / Home category strip order (preserved for API clients).
 LISTING_ITEM_CATEGORY_ROWS: Tuple[Tuple[str, ...], ...] = (
-    ("Electronics", "Home & Kitchen", "kids"),
-    ("Books", "Fashion", "Sports", "Tools"),
-    ("Fitness", "Beauty Products", "Vehicles"),
-    ("Vehicle Parts", "Fitness", "Personal Care"),
-    ("Media", "Video Games"),
+    ("Cryptos", "Services", "Phones"),
+    ("Laptops", "Cars", "Games"),
 )
 
 LISTING_INCOMING_CATEGORY_ROWS: Tuple[Tuple[str, ...], ...] = (
