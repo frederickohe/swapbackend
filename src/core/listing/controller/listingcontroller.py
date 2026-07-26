@@ -15,6 +15,7 @@ from core.listing.listing_categories import (
     LISTING_ITEM_CATEGORIES,
     format_allowed_item_categories,
     is_valid_item_category,
+    normalize_item_category,
 )
 from core.listing.service.listingservice import ListingService
 from core.user.model.User import User
@@ -43,7 +44,7 @@ def _normalize_search_category(category: Optional[str]) -> Optional[str]:
             status_code=400,
             detail=f"Invalid category filter. Allowed: {format_allowed_item_categories()}",
         )
-    return trimmed
+    return normalize_item_category(trimmed)
 
 
 @listing_routes.post("", response_model=ListingResponse)

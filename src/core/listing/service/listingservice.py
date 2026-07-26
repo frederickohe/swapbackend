@@ -7,6 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from config import settings
+from core.listing.listing_categories import category_search_values
 from core.listing.model.listing import Listing
 from core.shared.enums import ListingStatus
 from core.user.model.User import User
@@ -180,11 +181,15 @@ class ListingService:
         if keyword:
             pattern = f"%{keyword}%"
             query = query.filter(
-                or_(Listing.title.ilike(pattern), Listing.description.ilike(pattern))
+                or_(
+                    Listing.title.ilike(pattern),
+                    Listing.description.ilike(pattern),
+                    Listing.category.ilike(pattern),
+                )
             )
         if category:
-            # Exact match — categories are a fixed set validated at create/search.
-            query = query.filter(Listing.category == category)
+            # Match canonical category plus any legacy labels that map to it.
+            query = query.filter(Listing.category.in_(category_search_values(category)))
         if condition:
             query = query.filter(Listing.condition == condition.strip())
         if location:

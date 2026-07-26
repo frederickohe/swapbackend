@@ -8,6 +8,7 @@ from core.listing.listing_categories import (
     format_allowed_item_categories,
     is_valid_incoming_category,
     is_valid_item_category,
+    normalize_item_category,
 )
 
 
@@ -17,7 +18,7 @@ def _validate_item_category(v: str) -> str:
         raise ValueError(
             f"Invalid category. Allowed item categories: {format_allowed_item_categories()}"
         )
-    return trimmed
+    return normalize_item_category(trimmed)
 
 
 def _validate_incoming_category(v: Optional[str]) -> Optional[str]:
