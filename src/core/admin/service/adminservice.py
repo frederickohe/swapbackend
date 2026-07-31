@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_
@@ -16,6 +16,7 @@ from core.swap.service.swapservice import SwapService
 from core.auth.service.authservice import AuthService
 from core.shared.enums import UserRole
 from core.user.model.User import User
+from utilities.phone import normalize_phone
 
 
 class AdminService:
@@ -110,14 +111,33 @@ class AdminService:
             "pending_payment_swaps": int(pending_payment_swaps or 0),
         }
 
+    @staticmethod
+    def _phone_lookup_candidates(raw: str) -> Set[str]:
+        trimmed = raw.strip()
+        candidates: Set[str] = {trimmed}
+        normalized = normalize_phone(trimmed)
+        if normalized:
+            candidates.add(normalized)
+            if normalized.startswith("+"):
+                candidates.add(normalized[1:])
+            digits = "".join(ch for ch in normalized if ch.isdigit())
+            if digits:
+                candidates.add(digits)
+                if digits.startswith("233") and len(digits) >= 12:
+                    candidates.add(f"0{digits[3:12]}")
+        return {c for c in candidates if c}
+
     def list_addon_listings(
         self,
         *,
         wish_finding: Optional[bool] = None,
         budget_negotiation: Optional[bool] = None,
         collection_assistance: Optional[bool] = None,
-        status: Optional[str] = ListingStatus.ACTIVE.value,
+        status: Optional[str] = None,
         keyword: Optional[str] = None,
+        user_id: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
         page: int = 1,
         size: int = 20,
     ) -> dict:
@@ -126,26 +146,50 @@ class AdminService:
             .options(joinedload(Listing.user))
             .outerjoin(User, Listing.user_id == User.id)
         )
-        if status:
-            query = query.filter(Listing.status == status)
+
+        status_value = (status or "").strip()
+        if status_value and status_value.upper() not in ("ALL", "*"):
+            query = query.filter(Listing.status == status_value)
+        else:
+            # Default admin browse: everything except soft-deleted.
+            query = query.filter(Listing.status != ListingStatus.DELETED.value)
+
         if wish_finding is True:
             query = query.filter(Listing.wish_finding.is_(True))
         if budget_negotiation is True:
             query = query.filter(Listing.budget_negotiation.is_(True))
         if collection_assistance is True:
             query = query.filter(Listing.collection_assistance.is_(True))
+
+        owner_id = (user_id or "").strip() or None
+        owner_email = (email or "").strip() or None
+        owner_phone = (phone or "").strip() or None
+        if owner_id:
+            query = query.filter(Listing.user_id == owner_id)
+        if owner_email:
+            query = query.filter(User.email.ilike(owner_email))
+        if owner_phone:
+            phone_candidates = self._phone_lookup_candidates(owner_phone)
+            query = query.filter(User.phone.in_(list(phone_candidates)))
+
         if keyword:
-            like = f"%{keyword.strip()}%"
-            query = query.filter(
-                or_(
-                    Listing.title.ilike(like),
-                    Listing.description.ilike(like),
-                    Listing.category.ilike(like),
-                    User.fullname.ilike(like),
-                    User.email.ilike(like),
-                    User.phone.ilike(like),
-                )
-            )
+            term = keyword.strip()
+            like = f"%{term}%"
+            clauses = [
+                Listing.id == term,
+                Listing.user_id == term,
+                Listing.title.ilike(like),
+                Listing.description.ilike(like),
+                Listing.category.ilike(like),
+                User.id == term,
+                User.fullname.ilike(like),
+                User.email.ilike(like),
+                User.phone.ilike(like),
+            ]
+            phone_candidates = self._phone_lookup_candidates(term)
+            if phone_candidates:
+                clauses.append(User.phone.in_(list(phone_candidates)))
+            query = query.filter(or_(*clauses))
 
         total = query.count()
         page = max(1, page)
