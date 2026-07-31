@@ -1,15 +1,18 @@
 """
-Listing categories aligned with swap-pro dashboard / add-belonging UI.
+Listing categories aligned with swap-pro add-belonging UI (add_belonging.dart).
 
 Item categories are used on listing.category; incoming categories may appear in wishlist items.
 """
 
 from typing import Dict, FrozenSet, List, Set, Tuple
 
-# Rows mirror AddBelongingPage / Home category strip order (preserved for API clients).
+# Rows mirror Figma layout in AddBelongingPage (order preserved for API clients).
 LISTING_ITEM_CATEGORY_ROWS: Tuple[Tuple[str, ...], ...] = (
-    ("Cryptos", "Services", "Phones"),
-    ("Laptops", "Cars", "Games"),
+    ("Electronics", "Home & Kitchen", "kids"),
+    ("Books", "Fashion", "Sports", "Tools"),
+    ("Fitness", "Beauty Products", "Vehicles"),
+    ("Vehicle Parts", "Fitness", "Personal Care"),
+    ("Media", "Video Games"),
 )
 
 LISTING_INCOMING_CATEGORY_ROWS: Tuple[Tuple[str, ...], ...] = (
@@ -17,22 +20,15 @@ LISTING_INCOMING_CATEGORY_ROWS: Tuple[Tuple[str, ...], ...] = (
     ("Software",),
 )
 
-# Legacy labels (pre-domain refresh) → current item categories.
-LEGACY_ITEM_CATEGORY_MAP: Dict[str, str] = {
-    "Electronics": "Phones",
-    "Home & Kitchen": "Services",
-    "kids": "Games",
-    "Books": "Services",
-    "Fashion": "Services",
-    "Sports": "Games",
-    "Tools": "Services",
-    "Fitness": "Services",
-    "Beauty Products": "Services",
-    "Vehicles": "Cars",
-    "Vehicle Parts": "Cars",
-    "Personal Care": "Services",
-    "Media": "Games",
-    "Video Games": "Games",
+# Short-lived domain labels (Cryptos/Services/…) → restored item categories.
+# Kept so filters still find rows remapped by f6a7b8c9d0e1 until reverse migrate.
+DOMAIN_ITEM_CATEGORY_MAP: Dict[str, str] = {
+    "Cryptos": "Electronics",
+    "Services": "Fashion",
+    "Phones": "Electronics",
+    "Laptops": "Electronics",
+    "Cars": "Vehicles",
+    "Games": "Video Games",
 }
 
 
@@ -58,18 +54,18 @@ ALL_LISTING_CATEGORIES_SET: FrozenSet[str] = (
 
 
 def normalize_item_category(value: str) -> str:
-    """Map a legacy or current category label onto the canonical item category."""
+    """Map a domain or current category label onto the canonical item category."""
     trimmed = value.strip()
     if trimmed in LISTING_ITEM_CATEGORIES_SET:
         return trimmed
-    return LEGACY_ITEM_CATEGORY_MAP.get(trimmed, trimmed)
+    return DOMAIN_ITEM_CATEGORY_MAP.get(trimmed, trimmed)
 
 
 def is_valid_item_category(value: str) -> bool:
     trimmed = value.strip()
     return (
         trimmed in LISTING_ITEM_CATEGORIES_SET
-        or trimmed in LEGACY_ITEM_CATEGORY_MAP
+        or trimmed in DOMAIN_ITEM_CATEGORY_MAP
     )
 
 
@@ -84,14 +80,14 @@ def is_valid_listing_category(value: str) -> bool:
 
 def category_search_values(category: str) -> List[str]:
     """
-    Values that should match a category filter, including legacy labels that
+    Values that should match a category filter, including domain labels that
     remap onto the requested category.
     """
     canonical = normalize_item_category(category)
     matches: Set[str] = {canonical, category.strip()}
-    for legacy, mapped in LEGACY_ITEM_CATEGORY_MAP.items():
+    for domain, mapped in DOMAIN_ITEM_CATEGORY_MAP.items():
         if mapped == canonical:
-            matches.add(legacy)
+            matches.add(domain)
     return sorted(matches)
 
 

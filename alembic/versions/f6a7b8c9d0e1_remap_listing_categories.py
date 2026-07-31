@@ -1,4 +1,9 @@
-"""Remap legacy listing categories onto the new domain set."""
+"""Restore domain labels onto the original listing category set.
+
+Previously this revision remapped Electronics/Fashion/… → Phones/Services/….
+That direction is no longer desired; upgrade only remaps the short-lived
+domain labels back onto the restored categories.
+"""
 
 from alembic import op
 
@@ -8,37 +13,27 @@ down_revision = "e5f6a7b8c9d0"
 branch_labels = None
 depends_on = None
 
-# Must stay in sync with LEGACY_ITEM_CATEGORY_MAP in listing_categories.py
-_LEGACY_TO_CANONICAL = (
-    ("Electronics", "Phones"),
-    ("Home & Kitchen", "Services"),
-    ("kids", "Games"),
-    ("Books", "Services"),
-    ("Fashion", "Services"),
-    ("Sports", "Games"),
-    ("Tools", "Services"),
-    ("Fitness", "Services"),
-    ("Beauty Products", "Services"),
-    ("Vehicles", "Cars"),
-    ("Vehicle Parts", "Cars"),
-    ("Personal Care", "Services"),
-    ("Media", "Games"),
-    ("Video Games", "Games"),
+# Domain labels → restored item categories (best-effort; many→one was irreversible).
+_DOMAIN_TO_RESTORED = (
+    ("Cryptos", "Electronics"),
+    ("Services", "Fashion"),
+    ("Phones", "Electronics"),
+    ("Laptops", "Electronics"),
+    ("Cars", "Vehicles"),
+    ("Games", "Video Games"),
 )
 
 
 def upgrade():
-    for legacy, canonical in _LEGACY_TO_CANONICAL:
-        # Escape single quotes for SQL literals.
-        legacy_sql = legacy.replace("'", "''")
-        canonical_sql = canonical.replace("'", "''")
+    for domain, restored in _DOMAIN_TO_RESTORED:
+        domain_sql = domain.replace("'", "''")
+        restored_sql = restored.replace("'", "''")
         op.execute(
-            f"UPDATE listings SET category = '{canonical_sql}' "
-            f"WHERE category = '{legacy_sql}'"
+            f"UPDATE listings SET category = '{restored_sql}' "
+            f"WHERE category = '{domain_sql}'"
         )
 
 
 def downgrade():
-    # Ambiguous reverse mapping (many legacy labels share one canonical).
-    # Leave categories on the new domain set.
+    # Ambiguous; leave restored labels in place.
     pass
