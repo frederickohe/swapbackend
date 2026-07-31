@@ -167,7 +167,7 @@ class AdminService:
         if owner_id:
             query = query.filter(Listing.user_id == owner_id)
         if owner_email:
-            query = query.filter(User.email.ilike(owner_email))
+            query = query.filter(User.email.ilike(f"%{owner_email}%"))
         if owner_phone:
             phone_candidates = self._phone_lookup_candidates(owner_phone)
             query = query.filter(User.phone.in_(list(phone_candidates)))
