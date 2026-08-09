@@ -120,7 +120,7 @@ services:
       USE_WIREPICK_API_KEY: ${USE_WIREPICK_API_KEY:-true}
       
       # Frontend and Other URLs
-      BASE_FRONTEND_URL: ${BASE_FRONTEND_URL:-https://www.swappro.store}
+      BASE_FRONTEND_URL: ${BASE_FRONTEND_URL:-https://swappro.store}
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.swappro.store}
       
       # OTP Configuration
