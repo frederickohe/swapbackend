@@ -176,6 +176,10 @@ class SwapService:
         initiator_listing = self.listing_service.get_listing(initiator_listing_id)
         if owner_listing.status != ListingStatus.ACTIVE.value:
             raise HTTPException(status_code=400, detail="Target listing is not active")
+        if initiator_listing.status != ListingStatus.ACTIVE.value:
+            raise HTTPException(
+                status_code=400, detail="Your listing is not active. Renew it to swap."
+            )
         if initiator_listing.user_id != initiator.id:
             raise HTTPException(status_code=403, detail="Initiator listing does not belong to you")
         if owner_listing.user_id == initiator.id:

@@ -176,7 +176,10 @@ class ListingService:
         query = (
             self.db.query(Listing)
             .options(joinedload(Listing.user))
-            .filter(Listing.status != ListingStatus.DELETED.value)
+            .filter(
+                Listing.status == ListingStatus.ACTIVE.value,
+                Listing.expires_at >= datetime.now(timezone.utc),
+            )
         )
         if keyword:
             pattern = f"%{keyword}%"
