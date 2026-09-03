@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.credit.model.credit_transaction import CreditTransaction
 from core.credit.service.creditservice import CreditService
 from core.listing.model.listing import Listing
+from core.listing.service.listingservice import ListingService
 from core.payment.model.transaction import Transaction
 from core.shared.enums import ListingStatus, SwapRequestStatus, SwapStatus, TransactionType
 from core.swap.model.swap import Swap
@@ -24,6 +25,7 @@ class AdminService:
         self.db = db
         self.swap_service = SwapService(db)
         self.credit_service = CreditService(db)
+        self.listing_service = ListingService(db)
 
     def create_admin(self, request, creator: User | None) -> dict:
         if creator is None:
@@ -201,42 +203,53 @@ class AdminService:
             .all()
         )
 
-        items = []
-        for listing in rows:
-            owner = listing.user
-            items.append(
-                {
-                    "id": listing.id,
-                    "user_id": listing.user_id,
-                    "title": listing.title,
-                    "description": listing.description,
-                    "category": listing.category,
-                    "condition": listing.condition,
-                    "primary_image_url": listing.primary_image_url,
-                    "estimated_value": listing.estimated_value,
-                    "wishlist": listing.wishlist or [],
-                    "wish_finding": bool(listing.wish_finding),
-                    "budget_negotiation": bool(listing.budget_negotiation),
-                    "budget_amount": listing.budget_amount,
-                    "collection_assistance": bool(listing.collection_assistance),
-                    "status": listing.status,
-                    "location_area": listing.location_area,
-                    "location_lat": listing.location_lat,
-                    "location_lng": listing.location_lng,
-                    "created_at": listing.created_at.isoformat()
-                    if listing.created_at
-                    else None,
-                    "owner": {
-                        "id": owner.id,
-                        "fullname": owner.fullname,
-                        "email": owner.email,
-                        "phone": owner.phone,
-                    }
-                    if owner
-                    else None,
-                }
-            )
+        items = [self._listing_to_admin_item(listing) for listing in rows]
         return {"items": items, "total": total, "page": page, "size": size}
+
+    def _listing_to_admin_item(self, listing: Listing) -> dict:
+        owner = listing.user
+        return {
+            "id": listing.id,
+            "user_id": listing.user_id,
+            "title": listing.title,
+            "description": listing.description,
+            "category": listing.category,
+            "condition": listing.condition,
+            "primary_image_url": listing.primary_image_url,
+            "estimated_value": listing.estimated_value,
+            "wishlist": listing.wishlist or [],
+            "wish_finding": bool(listing.wish_finding),
+            "budget_negotiation": bool(listing.budget_negotiation),
+            "budget_amount": listing.budget_amount,
+            "collection_assistance": bool(listing.collection_assistance),
+            "status": listing.status,
+            "location_area": listing.location_area,
+            "location_lat": listing.location_lat,
+            "location_lng": listing.location_lng,
+            "created_at": listing.created_at.isoformat()
+            if listing.created_at
+            else None,
+            "owner": {
+                "id": owner.id,
+                "fullname": owner.fullname,
+                "email": owner.email,
+                "phone": owner.phone,
+            }
+            if owner
+            else None,
+        }
+
+    def update_listing(self, listing_id: str, data: dict) -> dict:
+        listing = self.listing_service.admin_update_listing(listing_id, data)
+        return self._listing_to_admin_item(listing)
+
+    def delete_listing(self, listing_id: str) -> dict:
+        listing = self.listing_service.admin_delete_listing(listing_id)
+        return self._listing_to_admin_item(listing)
+
+    def renew_listing(self, listing_id: str) -> dict:
+        listing = self.listing_service.admin_renew_listing(listing_id)
+        return self._listing_to_admin_item(listing)
 
     def create_admin_match(
         self, initiator_listing_id: str, owner_listing_id: str

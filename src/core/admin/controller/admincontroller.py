@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, Query
 from core.admin.dto.admin_dto import (
     AdminCreateRequest,
     AdminCreateResponse,
+    AdminListingItem,
     AdminListingsResponse,
+    AdminListingUpdateRequest,
     AdminMatchSwapRequest,
     AdminResolveSwapRequest,
     MetricsResponse,
@@ -67,6 +69,42 @@ def admin_listings(
         page=page,
         size=size,
     )
+
+
+@admin_routes.put("/listings/{listing_id}", response_model=AdminListingItem)
+def admin_update_listing(
+    listing_id: str,
+    request: AdminListingUpdateRequest,
+    db=Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Update any user's listing (title, value, status, add-ons, etc.)."""
+    data = request.dict(exclude_unset=True)
+    if "wishlist" in data and data["wishlist"] is not None:
+        data["wishlist"] = [
+            w.dict() if hasattr(w, "dict") else w for w in data["wishlist"]
+        ]
+    return AdminService(db).update_listing(listing_id, data)
+
+
+@admin_routes.delete("/listings/{listing_id}", response_model=AdminListingItem)
+def admin_delete_listing(
+    listing_id: str,
+    db=Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Soft-delete any user's listing."""
+    return AdminService(db).delete_listing(listing_id)
+
+
+@admin_routes.post("/listings/{listing_id}/renew", response_model=AdminListingItem)
+def admin_renew_listing(
+    listing_id: str,
+    db=Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Reactivate a listing and extend its expiry."""
+    return AdminService(db).renew_listing(listing_id)
 
 
 @admin_routes.post("/swaps/match")

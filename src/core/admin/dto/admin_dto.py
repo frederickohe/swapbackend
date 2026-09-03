@@ -1,9 +1,10 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 from core.auth.dto.request.password_policy import PASSWORD_MIN_LENGTH
-from core.shared.enums import UserRole
+from core.listing.dto.listing_dto import ListingUpdateRequest
+from core.shared.enums import ListingStatus, UserRole
 
 
 class AdminCreateRequest(BaseModel):
@@ -84,3 +85,18 @@ class AdminListingsResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class AdminListingUpdateRequest(ListingUpdateRequest):
+    """Admin can also set ACTIVE/EXPIRED. Delete uses the dedicated endpoint."""
+
+    status: Optional[str] = None
+
+    @validator("status")
+    def validate_status(cls, v):
+        if v is None:
+            return None
+        value = str(v).strip().upper()
+        if value not in (ListingStatus.ACTIVE.value, ListingStatus.EXPIRED.value):
+            raise ValueError("status must be ACTIVE or EXPIRED")
+        return value

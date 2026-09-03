@@ -86,12 +86,28 @@ class ListingService:
         self._refresh_expired(listing)
         return listing
 
+    _PROTECTED_FIELDS = {"id", "user_id", "created_at"}
+
     def update_listing(self, user_id: str, listing_id: str, data: dict) -> Listing:
         listing = self.get_listing(listing_id)
         if listing.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not your listing")
+        return self._apply_listing_update(listing, data)
+
+    def admin_update_listing(self, listing_id: str, data: dict) -> Listing:
+        listing = self.get_listing(listing_id)
+        return self._apply_listing_update(listing, data, allow_status=True)
+
+    def _apply_listing_update(
+        self,
+        listing: Listing,
+        data: dict,
+        *,
+        allow_status: bool = False,
+    ) -> Listing:
         if listing.status == ListingStatus.DELETED.value:
             raise HTTPException(status_code=400, detail="Listing is deleted")
+        data = dict(data)
         if "image_urls" in data and data["image_urls"] is not None:
             if len(data["image_urls"]) > 5:
                 raise HTTPException(status_code=400, detail="Maximum 5 images allowed")
@@ -102,8 +118,31 @@ class ListingService:
                 "location_area": data.get("location_area"),
             }
             data["location_area"] = self._resolve_location_area(merged)
+
+        status_value = data.get("status")
+        if status_value is not None:
+            if not allow_status:
+                data = {k: v for k, v in data.items() if k != "status"}
+            else:
+                normalized = str(status_value).strip().upper()
+                if normalized not in (
+                    ListingStatus.ACTIVE.value,
+                    ListingStatus.EXPIRED.value,
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Status must be ACTIVE or EXPIRED",
+                    )
+                data["status"] = normalized
+                if (
+                    normalized == ListingStatus.ACTIVE.value
+                    and listing.expires_at < datetime.now(timezone.utc)
+                ):
+                    listing.expires_at = self._expiry_date()
+                    listing.renewed_at = datetime.now(timezone.utc)
+
         for key, value in data.items():
-            if not hasattr(listing, key):
+            if key in self._PROTECTED_FIELDS or not hasattr(listing, key):
                 continue
             # Allow clearing budget_amount when budget negotiation is turned off.
             if value is not None or key == "budget_amount":
@@ -117,6 +156,15 @@ class ListingService:
         listing = self.get_listing(listing_id)
         if listing.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not your listing")
+        return self._soft_delete_listing(listing)
+
+    def admin_delete_listing(self, listing_id: str) -> Listing:
+        listing = self.get_listing(listing_id)
+        return self._soft_delete_listing(listing)
+
+    def _soft_delete_listing(self, listing: Listing) -> Listing:
+        if listing.status == ListingStatus.DELETED.value:
+            raise HTTPException(status_code=400, detail="Listing is already deleted")
         listing.status = ListingStatus.DELETED.value
         listing.updated_at = datetime.now(timezone.utc)
         self.db.commit()
@@ -127,9 +175,19 @@ class ListingService:
         listing = self.get_listing(listing_id)
         if listing.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not your listing")
+        return self._renew_listing(listing)
+
+    def admin_renew_listing(self, listing_id: str) -> Listing:
+        listing = self.get_listing(listing_id)
+        return self._renew_listing(listing)
+
+    def _renew_listing(self, listing: Listing) -> Listing:
+        if listing.status == ListingStatus.DELETED.value:
+            raise HTTPException(status_code=400, detail="Listing is deleted")
         listing.expires_at = self._expiry_date()
         listing.renewed_at = datetime.now(timezone.utc)
         listing.status = ListingStatus.ACTIVE.value
+        listing.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(listing)
         return listing
