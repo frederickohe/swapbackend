@@ -9,7 +9,6 @@ from core.exceptions import *
 from core.user.dto.response.paged_users import PagedUserResponse
 from utilities.dbconfig import SessionLocal
 from sqlalchemy.orm import Session
-from core.user.model.User import User
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -84,16 +83,13 @@ def get_swap_profile(authjwt: AuthJWT = Depends(validate_token), db: Session = D
     return ProfileService(db).get_swap_profile(authjwt.get_jwt_subject())
 
 
-@user_routes.delete("/me")
+@user_routes.delete("/me", response_model=MessageResponse)
 def delete_own_account(authjwt: AuthJWT = Depends(validate_token), db: Session = Depends(get_db)):
     user_service = UserService(db)
-    current = user_service.get_current_user(authjwt.get_jwt_subject())
-    user = db.query(User).filter(User.id == current.id).first()
-    if user:
-        user.status = "DELETED"
-        user.enabled = False
-        db.commit()
-    return MessageResponse(message="Account deleted successfully")
+    return user_service.delete_own_account(
+        identifier=authjwt.get_jwt_subject(),
+        access_token=getattr(authjwt, "_token", None),
+    )
 
 
 @user_routes.get("/me/notifications", response_model=PagedNotificationResponse)

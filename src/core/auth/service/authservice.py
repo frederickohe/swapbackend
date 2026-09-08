@@ -213,6 +213,14 @@ class AuthService:
         if not self.verify_password(password, db_user.hashed_password):
             raise InvalidCredentialsError()
 
+        if db_user.status in ("DELETED", "INACTIVE"):
+            raise HTTPException(
+                status_code=403,
+                detail="Account is disabled"
+                if db_user.status == "INACTIVE"
+                else "Account is deleted",
+            )
+
         return db_user
 
     def signin(self, user: BaseModel):
