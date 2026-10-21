@@ -20,15 +20,19 @@ LISTING_INCOMING_CATEGORY_ROWS: Tuple[Tuple[str, ...], ...] = (
     ("Software",),
 )
 
-# Short-lived domain labels (Cryptos/Services/…) → restored item categories.
-# Kept so filters still find rows remapped by f6a7b8c9d0e1 until reverse migrate.
+# Retired browse labels → current item categories.
+# Cryptos is not offered. It is not a creatable category.
 DOMAIN_ITEM_CATEGORY_MAP: Dict[str, str] = {
-    "Cryptos": "Electronics",
     "Services": "Fashion",
     "Phones": "Electronics",
     "Laptops": "Electronics",
     "Cars": "Vehicles",
     "Games": "Video Games",
+}
+
+# Labels that must never be shown or stored as their own category.
+RETIRED_CATEGORY_LABELS: Dict[str, str] = {
+    "Cryptos": "Electronics",
 }
 
 
@@ -53,9 +57,22 @@ ALL_LISTING_CATEGORIES_SET: FrozenSet[str] = (
 )
 
 
+def public_item_category(value: Optional[str]) -> Optional[str]:
+    """Hide retired labels, including cryptocurrency, from API responses."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return trimmed
+    return RETIRED_CATEGORY_LABELS.get(trimmed, trimmed)
+
+
 def normalize_item_category(value: str) -> str:
     """Map a domain or current category label onto the canonical item category."""
     trimmed = value.strip()
+    retired = RETIRED_CATEGORY_LABELS.get(trimmed)
+    if retired:
+        return retired
     if trimmed in LISTING_ITEM_CATEGORIES_SET:
         return trimmed
     return DOMAIN_ITEM_CATEGORY_MAP.get(trimmed, trimmed)
@@ -88,6 +105,9 @@ def category_search_values(category: str) -> List[str]:
     for domain, mapped in DOMAIN_ITEM_CATEGORY_MAP.items():
         if mapped == canonical:
             matches.add(domain)
+    for retired, mapped in RETIRED_CATEGORY_LABELS.items():
+        if mapped == canonical:
+            matches.add(retired)
     return sorted(matches)
 
 

@@ -69,12 +69,13 @@ class AuthService:
             
         user_id = self.generate_user_id()
 
-        normalized_phone = normalize_phone(request.phone) if request.phone else None
+        normalized_phone = normalize_phone(request.phone) if request.phone else ""
+        phone_value = normalized_phone or None
 
         db_user = User(
             id=user_id,
             fullname=request.fullname,
-            phone=normalized_phone or request.phone,
+            phone=phone_value,
             email=request.email,
             hashed_password=self.hash_password(request.password),
             role=role,
@@ -131,29 +132,32 @@ class AuthService:
         self.db.commit()
         self.db.refresh(db_user)
 
+        # Phone is optional at signup. Only send a phone OTP when one was provided.
         otp_send_result = None
-        try:
-            # Prefer phone OTP for account enablement (current `/verify-otp` contract uses phone).
-            if normalized_phone:
-                otp_send_result = self.otp_service.send_otp_phone(normalized_phone)
-            elif getattr(request, "email", None):
-                otp_send_result = self.otp_service.send_otp_email(request.email)
-        except Exception as e:
-            logger.error(f"OTP send error during signup for user {db_user.id}: {e}", exc_info=True)
+        if phone_value:
+            try:
+                otp_send_result = self.otp_service.send_otp_phone(phone_value)
+            except Exception as e:
+                logger.error(f"OTP send error during signup for user {db_user.id}: {e}", exc_info=True)
 
         otp_sent = bool(getattr(otp_send_result, "success", False)) if otp_send_result is not None else False
-        otp_message = (
-            "User account created successfully. Please verify your phone number with the OTP sent to you."
-            if otp_sent
-            else "User account created successfully, but we couldn't send your OTP. Please request a new OTP."
-        )
+        if not phone_value:
+            otp_message = "User account created successfully."
+        elif otp_sent:
+            otp_message = (
+                "User account created successfully. Please verify your phone number with the OTP sent to you."
+            )
+        else:
+            otp_message = (
+                "User account created successfully, but we couldn't send your OTP. Please request a new OTP."
+            )
 
         return {
             "message": otp_message,
             "user_id": db_user.id,
-            "verification_required": True,
+            "verification_required": bool(phone_value),
             "otp_sent": otp_sent,
-            "otp_send_error": None if otp_sent else getattr(otp_send_result, "message", None),
+            "otp_send_error": None if otp_sent or not phone_value else getattr(otp_send_result, "message", None),
         }
     
     def _find_user_by_phone(self, phone: str) -> User | None:

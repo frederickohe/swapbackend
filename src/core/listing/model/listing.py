@@ -35,6 +35,8 @@ class Listing(Base):
     location_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     location_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     location_area: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
+    # Number swap seekers call about this listing. Not required on the account.
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

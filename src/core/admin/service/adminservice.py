@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from core.credit.model.credit_transaction import CreditTransaction
 from core.credit.service.creditservice import CreditService
+from core.listing.listing_categories import public_item_category
 from core.listing.model.listing import Listing
 from core.listing.service.listingservice import ListingService
 from core.payment.model.transaction import Transaction
@@ -213,7 +214,7 @@ class AdminService:
             "user_id": listing.user_id,
             "title": listing.title,
             "description": listing.description,
-            "category": listing.category,
+            "category": public_item_category(listing.category) or listing.category,
             "condition": listing.condition,
             "primary_image_url": listing.primary_image_url,
             "estimated_value": listing.estimated_value,

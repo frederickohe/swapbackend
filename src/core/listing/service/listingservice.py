@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from config import settings
-from core.listing.listing_categories import category_search_values
+from core.listing.listing_categories import category_search_values, public_item_category
 from core.listing.model.listing import Listing
 from core.shared.enums import ListingStatus
 from core.user.model.User import User
@@ -67,6 +67,7 @@ class ListingService:
             location_lat=data.get("location_lat"),
             location_lng=data.get("location_lng"),
             location_area=location_area,
+            contact_phone=data.get("contact_phone"),
             expires_at=self._expiry_date(),
         )
         self.db.add(listing)
@@ -211,10 +212,15 @@ class ListingService:
     def _wishlist_match(searcher_listing: Optional[Listing], target: Listing) -> bool:
         if not searcher_listing:
             return False
-        target_wish = {w.get("category", "").lower() for w in (target.wishlist or []) if w.get("category")}
+        target_wish = {
+            (public_item_category(w.get("category", "")) or "").lower()
+            for w in (target.wishlist or [])
+            if w.get("category")
+        }
+        target_wish.discard("")
         if not target_wish:
             return False
-        return searcher_listing.category.lower() in target_wish
+        return (public_item_category(searcher_listing.category) or "").lower() in target_wish
 
     def search_listings(
         self,

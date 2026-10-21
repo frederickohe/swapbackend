@@ -795,7 +795,11 @@ class SwapService:
             "meeting_time": swap_request.meeting_time,
             "counterparty": {
                 "fullname": (counterparty.fullname or "").strip() or None,
-                "phone": (counterparty.phone or "").strip() or None,
+                "phone": (
+                    (getattr(counterparty_listing, "contact_phone", None) or "").strip()
+                    or (counterparty.phone or "").strip()
+                    or None
+                ),
                 "email": (counterparty.email or "").strip() or None,
             },
             "counterparty_listing": {

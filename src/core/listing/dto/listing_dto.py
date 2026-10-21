@@ -1,7 +1,10 @@
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, root_validator, validator
+
+from utilities.phone import normalize_phone
 
 from core.listing.listing_categories import (
     format_allowed_incoming_categories,
@@ -9,7 +12,21 @@ from core.listing.listing_categories import (
     is_valid_incoming_category,
     is_valid_item_category,
     normalize_item_category,
+    public_item_category,
 )
+
+
+def _public_wishlist(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    cleaned: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        category = row.get("category")
+        if isinstance(category, str):
+            row["category"] = public_item_category(category)
+        cleaned.append(row)
+    return cleaned
 
 
 def _validate_item_category(v: str) -> str:
@@ -19,6 +36,22 @@ def _validate_item_category(v: str) -> str:
             f"Invalid category. Allowed item categories: {format_allowed_item_categories()}"
         )
     return normalize_item_category(trimmed)
+
+
+def _validate_contact_phone(v: Optional[str], *, required: bool) -> Optional[str]:
+    if v is None or not str(v).strip():
+        if required:
+            raise ValueError(
+                "Enter a phone number so swap seekers can call you about this listing"
+            )
+        return None
+    normalized = normalize_phone(v)
+    digits = re.sub(r"\D", "", normalized)
+    if len(digits) < 9 or len(normalized) > 30:
+        raise ValueError(
+            "Enter a valid phone number so swap seekers can call you about this listing"
+        )
+    return normalized
 
 
 def _validate_incoming_category(v: Optional[str]) -> Optional[str]:
@@ -59,6 +92,11 @@ class ListingCreateRequest(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     location_area: Optional[str] = Field(None, max_length=200)
+    contact_phone: str = Field(
+        ...,
+        max_length=40,
+        description="Phone number swap seekers can call about this listing",
+    )
     wish_finding: bool = False
     budget_negotiation: bool = False
     budget_amount: Optional[float] = Field(None, gt=0)
@@ -67,6 +105,10 @@ class ListingCreateRequest(BaseModel):
     @validator("category")
     def validate_category(cls, v):
         return _validate_item_category(v)
+
+    @validator("contact_phone")
+    def validate_contact_phone(cls, v):
+        return _validate_contact_phone(v, required=True)
 
     @validator("image_urls")
     def max_images(cls, v):
@@ -100,6 +142,7 @@ class ListingUpdateRequest(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     location_area: Optional[str] = Field(None, max_length=200)
+    contact_phone: Optional[str] = Field(None, max_length=40)
     wish_finding: Optional[bool] = None
     budget_negotiation: Optional[bool] = None
     budget_amount: Optional[float] = Field(None, gt=0)
@@ -110,6 +153,10 @@ class ListingUpdateRequest(BaseModel):
         if v is None:
             return None
         return _validate_item_category(v)
+
+    @validator("contact_phone")
+    def validate_contact_phone(cls, v):
+        return _validate_contact_phone(v, required=False)
 
     @root_validator
     def validate_budget_negotiation(cls, values):
@@ -155,6 +202,7 @@ class ListingResponse(BaseModel):
     location_lat: Optional[float]
     location_lng: Optional[float]
     location_area: Optional[str] = None
+    contact_phone: Optional[str] = None
     expires_at: datetime
     renewed_at: Optional[datetime]
     created_at: datetime
@@ -177,7 +225,7 @@ class ListingResponse(BaseModel):
             owner_profile_picture_url=owner_profile_picture_url,
             title=listing.title,
             description=listing.description,
-            category=listing.category,
+            category=public_item_category(listing.category) or listing.category,
             condition=listing.condition,
             primary_image_url=listing.primary_image_url,
             image_urls=listing.image_urls or [],
@@ -185,7 +233,7 @@ class ListingResponse(BaseModel):
             build_version=listing.build_version,
             ownership_documents_available=listing.ownership_documents_available,
             estimated_value=listing.estimated_value,
-            wishlist=listing.wishlist or [],
+            wishlist=_public_wishlist(listing.wishlist or []),
             wish_finding=bool(getattr(listing, "wish_finding", False)),
             budget_negotiation=bool(getattr(listing, "budget_negotiation", False)),
             budget_amount=getattr(listing, "budget_amount", None),
@@ -196,6 +244,7 @@ class ListingResponse(BaseModel):
             location_lat=listing.location_lat,
             location_lng=listing.location_lng,
             location_area=listing.location_area,
+            contact_phone=getattr(listing, "contact_phone", None),
             expires_at=listing.expires_at,
             renewed_at=listing.renewed_at,
             created_at=listing.created_at,
