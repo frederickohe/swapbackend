@@ -87,9 +87,11 @@ else
 	echo "AUTO_MIGRATE not set to 'true' — skipping autogenerate step"
 fi
 
-# Apply migrations to the database
-echo "Applying Alembic migrations (upgrade head)"
-python -m alembic upgrade head
+# Apply migrations to the database.
+# Production has a leftover autogenerate branch, so `upgrade head` aborts
+# and never applies the real listing migrations.
+echo "Applying Alembic migrations (upgrade heads)"
+python -m alembic upgrade heads
 
 # Run the application: use multiple workers for production
 APP_PORT="${APP_PORT:-3090}"
